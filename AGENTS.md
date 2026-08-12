@@ -11,10 +11,11 @@ OpenCalori is a free, open-source (GPL-3.0) Android calorie counter and food dia
 - **DI**: Hilt
 - **DB**: Room (SQLite) — main app DB + pre-populated product DB in assets
 - **Network**: Ktor Client with OkHttp engine
-- **Camera**: CameraX
+- **Camera**: CameraX + AndroidX ExifInterface
 - **Charts**: Vico 2.x
 - **Async**: Kotlin Coroutines + StateFlow
 - **Security**: EncryptedSharedPreferences for API keys, DataStore for profile
+- **Tests**: JUnit4, kotlinx-coroutines-test, Turbine, sqlite-jdbc
 
 ## Build Commands
 
@@ -28,6 +29,9 @@ echo "sdk.dir=C:\\Users\\<you>\\Android\\Sdk" > local.properties
 # Run unit tests
 ./gradlew :app:testDebugUnitTest
 
+# Signed release (needs the signing block in local.properties, see below)
+./gradlew :app:assembleRelease
+
 # Clean build
 ./gradlew clean :app:assembleDebug
 ```
@@ -37,23 +41,28 @@ echo "sdk.dir=C:\\Users\\<you>\\Android\\Sdk" > local.properties
 ```
 app/src/main/java/com/opencalori/app/
 ├── data/
-│   ├── local/          # Room entities, DAOs, databases (AppDatabase, ProductDatabase)
-│   ├── network/        # OpenAiClient (Ktor), DTOs
+│   ├── backup/         # BackupSerializer (pure), BackupRepository (SAF)
+│   ├── image/          # ImageProcessor: downscale, EXIF rotation, base64
+│   ├── local/          # Room entities, DAOs, databases, FtsQuery
+│   ├── network/        # OpenAiClient (Ktor), DTOs, AiResponseParser, ApiErrorMessages
 │   ├── preferences/    # ApiKeyStore (encrypted), UserPreferencesStore (DataStore)
-│   └── repository/     # MealRepository, ProductRepository, AiRepository
+│   └── repository/     # *RepositoryImpl
 ├── domain/
 │   ├── model/          # FoodItem, Meal, UserProfile, CalorieGoal, ApiConfig, etc.
+│   ├── repository/     # Interfaces the UI layer depends on
 │   └── usecase/        # CalculateTdeeUseCase
 ├── ui/
 │   ├── onboarding/     # OnboardingScreen + ViewModel
 │   ├── dashboard/      # DashboardScreen + ViewModel
-│   ├── scanner/        # ScannerScreen + ViewModel (CameraX + 2-stage AI)
+│   ├── scanner/        # ScannerScreen + ViewModel (CameraX + 3-stage AI)
 │   ├── foodsearch/     # FoodSearchScreen + ViewModel
-│   ├── settings/       # SettingsScreen + ViewModel
+│   ├── profile/        # ProfileScreen + ViewModel (edit body metrics)
+│   ├── settings/       # SettingsScreen + ViewModel (BYOK, backup)
 │   ├── theme/          # Color.kt, Theme.kt, Type.kt
-│   ├── components/     # MacroComponents.kt, WeightChart.kt
+│   ├── util/           # NumberFormat
+│   ├── components/     # MacroComponents.kt, NumberField.kt, WeightChart.kt
 │   └── navigation/     # NavHost.kt, RootViewModel.kt
-├── di/                 # AppModule.kt (Hilt)
+├── di/                 # AppModule.kt, RepositoryModule.kt (Hilt)
 ├── MainActivity.kt
 └── OpenCaloriApp.kt
 ```
@@ -61,11 +70,24 @@ app/src/main/java/com/opencalori/app/
 ## Key Conventions
 
 - **Kotlin official code style** (enforced via `kotlin.code.style=official` in gradle.properties).
+- **ViewModels depend on interfaces** from `domain/repository`, never on `data` implementations. This is what keeps the UI layer unit-testable with fakes in `src/test/.../testing/`.
 - **StateFlow** for all reactive state; ViewModels expose immutable `StateFlow<UiState>`.
-- **Hilt** for DI — all ViewModels use `@HiltViewModel`, repositories are `@Singleton`.
+- **Hilt** for DI — all ViewModels use `@HiltViewModel`, repositories are `@Singleton` and bound with `@Binds`.
+- **`Clock` is injected**, never `LocalDate.now()` inside a ViewModel — tests pin "today".
 - **Room** — main DB (`AppDatabase`) for user data; `ProductDatabase` is read-only, loaded via `createFromAsset()`.
-- **Compose** — no XML layouts (except theme manifest); Material 3 components throughout.
-- **Coroutines** — `viewModelScope` for all async operations in ViewModels.
+- **Compose** — no XML layouts (except the theme manifest); Material 3 components throughout.
+- **Coroutines** — `viewModelScope` for all async operations in ViewModels; dispatchers injected via `@IoDispatcher`.
+
+## Landmines
+
+Things that fail silently if you get them wrong:
+
+1. **Never add `fallbackToDestructiveMigration()` to `AppDatabase`.** It holds the user's entire food history. Write a real `Migration` and bump the version.
+2. **The FTS index must use `unicode61`.** The default tokenizer only case-folds ASCII, so a lowercase Cyrillic query matches nothing.
+3. **Prefix search must be `слово*`, not `"слово"*`.** The quoted form matches exactly in FTS4 and silently returns zero rows.
+4. **Anything written to the diary takes an explicit `epochDay`.** The scanner and the search screen write into the day the dashboard is showing, passed through the nav route (`Routes.ARG_DATE`).
+5. **`byok_api_prefs` must stay excluded from Android backup** (`backup_rules.xml`, `data_extraction_rules.xml`). The Keystore master key is not backed up, so a restored file cannot be decrypted.
+6. **`ROOM_IDENTITY_HASH` in the generator must match Room's compile-time hash** (see below).
 
 ## Pre-populated Product Database
 
@@ -75,17 +97,37 @@ The offline product database (`app/src/main/assets/databases/products.db`) is ge
 python tools/generate_products_db.py
 ```
 
-**Important**: The `ROOM_IDENTITY_HASH` in the script must match Room's compile-time hash. If you change `ProductEntity` or `ProductFtsEntity`:
-1. Build the app once — Room will report the expected hash.
-2. Update `ROOM_IDENTITY_HASH` in the script.
-3. Re-run the script.
+If you change `ProductEntity` or `ProductFtsEntity`:
+
+1. Build the app once.
+2. Copy the new hash from `app/build/generated/ksp/debug/kotlin/.../ProductDatabase_Impl.kt`.
+3. Paste it into `ROOM_IDENTITY_HASH` in the script **and** into `EXPECTED_IDENTITY_HASH` in `ProductsAssetDatabaseTest`.
+4. Re-run the script.
+
+`ProductsAssetDatabaseTest` opens the shipped file with sqlite-jdbc and fails if the hash,
+the tokenizer or the search behaviour regress.
 
 ## BYOK (AI) Integration
 
 - Users configure any OpenAI-compatible API (Base URL, API Key, Model ID) in Settings.
-- API key is stored in `EncryptedSharedPreferences` (AES-256).
+- API key is stored in `EncryptedSharedPreferences` (AES-256), read off the main thread.
+- Text messages are sent as a plain string `content`; only vision messages use the multipart array form. Some OpenAI-compatible servers reject the array form for text.
 - Validation does a text ping + a vision ping (1×1 px PNG) to check multimodal support.
-- The scanner uses a 2-stage loop: (1) recognize food names, (2) user edits, (3) estimate grams/macros.
+- The scanner uses a 3-stage loop: (1) recognize food names, (2) user edits, (3) estimate grams/macros. Each confirmation step can be skipped from Settings.
+- Model output is parsed by `AiResponseParser`, which tolerates markdown fences, prose around the JSON, numbers as strings and alternative key names.
+
+## Signing a Release
+
+`app/build.gradle.kts` reads an optional signing block from `local.properties` (untracked):
+
+```properties
+releaseStoreFile=C:\\Users\\<you>\\.opencalori\\opencalori-release.jks
+releaseStorePassword=...
+releaseKeyAlias=opencalori
+releaseKeyPassword=...
+```
+
+Without it, `assembleRelease` still builds but produces an unsigned APK.
 
 ## Testing
 
@@ -93,7 +135,9 @@ python tools/generate_products_db.py
 ./gradlew :app:testDebugUnitTest
 ```
 
-Unit tests are in `app/src/test/java/com/opencalori/app/`.
+Unit tests live in `app/src/test/java/com/opencalori/app/`, fakes in `.../testing/`.
+When adding a feature to a ViewModel, extend the matching `*ViewModelTest` — no test
+requires an emulator.
 
 ## License
 

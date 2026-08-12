@@ -41,12 +41,28 @@ data class WeightEntry(
     val weightKg: Float
 )
 
-/** Product from the offline local database. */
+/** Where a searchable product came from. */
+enum class ProductSource { BUILT_IN, CUSTOM, RECENT }
+
+/** Product from the offline local database, the user's own list, or recent history. */
 data class Product(
     val id: Long,
     val name: String,
     val caloriesPer100g: Float,
     val proteinPer100g: Float,
     val fatPer100g: Float,
-    val carbsPer100g: Float
-)
+    val carbsPer100g: Float,
+    val source: ProductSource = ProductSource.BUILT_IN
+) {
+    /** Stable key for lazy lists - ids may collide across sources. */
+    val key: String get() = source.name + "-" + id + "-" + name
+
+    fun toFoodItem(grams: Float) = FoodItem(
+        name = name,
+        grams = grams,
+        caloriesPer100g = caloriesPer100g,
+        proteinPer100g = proteinPer100g,
+        fatPer100g = fatPer100g,
+        carbsPer100g = carbsPer100g
+    )
+}

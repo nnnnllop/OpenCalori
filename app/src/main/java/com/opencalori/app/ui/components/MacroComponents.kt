@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,19 +24,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.opencalori.app.ui.theme.CarbsColor
 import com.opencalori.app.ui.theme.FatColor
 import com.opencalori.app.ui.theme.ProteinColor
+import kotlin.math.roundToInt
 
 @Composable
 fun CalorieRing(
     consumed: Float,
     target: Float,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    title: String = "Калории сегодня"
 ) {
     val progress = if (target > 0) (consumed / target).coerceIn(0f, 1f) else 0f
+    val remaining = (target - consumed).roundToInt()
+
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -45,26 +52,31 @@ fun CalorieRing(
             modifier = Modifier.padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                "Калории сегодня",
-                style = MaterialTheme.typography.titleMedium
-            )
+            Text(title, style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(12.dp))
-            Box(contentAlignment = Alignment.Center) {
-                androidx.compose.material3.CircularProgressIndicator(
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.semantics {
+                    contentDescription = "Съедено " + consumed.roundToInt() +
+                        " из " + target.roundToInt() + " ккал"
+                }
+            ) {
+                CircularProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.size(160.dp),
                     strokeWidth = 14.dp,
+                    color = if (consumed > target) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.primary,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        "${consumed.toInt()}",
+                        consumed.roundToInt().toString(),
                         style = MaterialTheme.typography.displaySmall,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "из ${target.toInt()} ккал",
+                        "из " + target.roundToInt() + " ккал",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -72,9 +84,11 @@ fun CalorieRing(
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "Осталось: ${(target - consumed).coerceAtLeast(0f).toInt()} ккал",
+                if (remaining >= 0) "Осталось: " + remaining + " ккал"
+                else "Превышение: " + (-remaining) + " ккал",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary
+                color = if (remaining >= 0) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.error
             )
         }
     }
@@ -96,7 +110,7 @@ fun MacroProgressBar(
         ) {
             Text(label, style = MaterialTheme.typography.labelLarge)
             Text(
-                "${current.toInt()}/${target.toInt()} г",
+                current.roundToInt().toString() + "/" + target.roundToInt() + " г",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

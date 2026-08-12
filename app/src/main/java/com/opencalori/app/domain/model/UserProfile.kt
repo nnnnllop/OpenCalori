@@ -1,19 +1,22 @@
 package com.opencalori.app.domain.model
 
-enum class Gender { MALE, FEMALE }
-
-enum class ActivityLevel(val factor: Double, val labelRes: String) {
-    SEDENTARY(1.2, "Сидячий образ жизни"),
-    LIGHT(1.375, "Лёгкая активность (1–3 трен./нед.)"),
-    MODERATE(1.55, "Умеренная активность (3–5 трен./нед.)"),
-    ACTIVE(1.725, "Высокая активность (6–7 трен./нед.)"),
-    VERY_ACTIVE(1.9, "Очень высокая активность")
+enum class Gender(val label: String) {
+    MALE("Мужской"),
+    FEMALE("Женский")
 }
 
-enum class Goal(val calorieDelta: Int, val labelRes: String) {
-    LOSE(-500, "Похудение"),
-    MAINTAIN(0, "Удержание веса"),
-    GAIN(300, "Набор мышечной массы")
+enum class ActivityLevel(val factor: Double, val label: String, val hint: String) {
+    SEDENTARY(1.2, "Сидячий образ жизни", "Офис, мало ходьбы"),
+    LIGHT(1.375, "Лёгкая активность", "1-3 тренировки в неделю"),
+    MODERATE(1.55, "Умеренная активность", "3-5 тренировок в неделю"),
+    ACTIVE(1.725, "Высокая активность", "6-7 тренировок в неделю"),
+    VERY_ACTIVE(1.9, "Очень высокая активность", "Физическая работа или две тренировки в день")
+}
+
+enum class Goal(val calorieDelta: Int, val label: String, val hint: String) {
+    LOSE(-500, "Похудение", "Дефицит 500 ккал"),
+    MAINTAIN(0, "Удержание веса", "Норма поддержания"),
+    GAIN(300, "Набор мышечной массы", "Профицит 300 ккал")
 }
 
 data class UserProfile(

@@ -14,15 +14,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,10 +37,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,14 +53,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.opencalori.app.domain.model.FoodItem
 import com.opencalori.app.domain.model.Meal
+import com.opencalori.app.domain.model.WeightEntry
 import com.opencalori.app.ui.components.CalorieRing
 import com.opencalori.app.ui.components.MacroSummaryRow
+import com.opencalori.app.ui.components.WeightChart
+import com.opencalori.app.ui.util.NumberFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -59,15 +73,30 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
-    onNavigateToScanner: () -> Unit,
-    onNavigateToSearch: () -> Unit,
+    onNavigateToScanner: (Long) -> Unit,
+    onNavigateToSearch: (Long) -> Unit,
     onNavigateToSettings: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
-    var showWeightDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    var weightDialogVisible by remember { mutableStateOf(false) }
+    var editingItem by remember { mutableStateOf<FoodItem?>(null) }
+
+    // Every destructive action is undoable, which is why none of them ask for confirmation.
+    LaunchedEffect(state.message) {
+        val message = state.message ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = message,
+            actionLabel = if (state.canUndo) "Отменить" else null,
+            duration = SnackbarDuration.Short
+        )
+        if (result == SnackbarResult.ActionPerformed) viewModel.undoDelete() else viewModel.consumeMessage()
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("OpenCalori") },
@@ -79,20 +108,29 @@ fun DashboardScreen(
             )
         },
         floatingActionButton = {
-            val profile by viewModel.profile.collectAsState()
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ExtendedFloatingActionButton(
-                    onClick = onNavigateToSearch,
-                    icon = { Icon(Icons.Default.Search, null) },
-                    text = { Text("Поиск") }
-                )
-                if (profile?.aiEnabled == true) {
-                    ExtendedFloatingActionButton(
-                        onClick = onNavigateToScanner,
-                        icon = { Icon(Icons.Default.PhotoCamera, null) },
-                        text = { Text("Сканер") }
-                    )
+                if (state.aiEnabled) {
+                    if (state.scannerReady) {
+                        ExtendedFloatingActionButton(
+                            onClick = { onNavigateToScanner(state.date.toEpochDay()) },
+                            icon = { Icon(Icons.Default.PhotoCamera, null) },
+                            text = { Text("Сканер") }
+                        )
+                    } else {
+                        // Sending the user to a scanner that cannot work is a dead end;
+                        // send them where the problem is instead.
+                        ExtendedFloatingActionButton(
+                            onClick = onNavigateToSettings,
+                            icon = { Icon(Icons.Default.Key, null) },
+                            text = { Text("Подключить ИИ") }
+                        )
+                    }
                 }
+                ExtendedFloatingActionButton(
+                    onClick = { onNavigateToSearch(state.date.toEpochDay()) },
+                    icon = { Icon(Icons.Default.Search, null) },
+                    text = { Text("Добавить") }
+                )
             }
         }
     ) { padding ->
@@ -100,19 +138,22 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 160.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
                 DateNavigator(
                     date = state.date,
+                    isToday = state.isToday,
                     onPrev = viewModel::previousDay,
-                    onNext = viewModel::nextDay
+                    onNext = viewModel::nextDay,
+                    onToday = viewModel::goToToday
                 )
             }
 
             item {
                 CalorieRing(
+                    title = if (state.isToday) "Калории сегодня" else "Калории за день",
                     consumed = state.consumedCalories,
                     target = state.goal?.targetCalories?.toFloat() ?: 2000f
                 )
@@ -129,66 +170,82 @@ fun DashboardScreen(
             item {
                 WeightCard(
                     currentWeight = state.currentWeight,
-                    onAddClick = { showWeightDialog = true }
+                    onAddClick = { weightDialogVisible = true }
                 )
             }
 
             if (state.weightHistory.size >= 2) {
-                item {
-                    WeightChartCard(history = state.weightHistory)
-                }
+                item { WeightChartCard(history = state.weightHistory) }
             }
 
             item {
-                Text("Приёмы пищи", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Приёмы пищи", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    AssistChip(
+                        onClick = viewModel::repeatPreviousDay,
+                        label = { Text("Повторить вчера") },
+                        leadingIcon = { Icon(Icons.Default.ContentCopy, null, Modifier.width(18.dp)) }
+                    )
+                }
             }
 
             if (state.meals.isEmpty()) {
-                item {
-                    Card(
-                        Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        Box(Modifier.padding(32.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            Text(
-                                "Пока нет записей.\nСфотографируйте еду или найдите продукт вручную.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
+                item { EmptyDiaryCard() }
             } else {
                 items(state.meals, key = { it.id }) { meal ->
-                    MealCard(meal = meal, onDelete = { viewModel.deleteMeal(meal.id) })
+                    MealCard(
+                        meal = meal,
+                        onDeleteMeal = { viewModel.deleteMeal(meal) },
+                        onDeleteItem = { item -> viewModel.deleteFoodItem(meal, item) },
+                        onEditItem = { item -> editingItem = item }
+                    )
                 }
             }
-
-            item { Spacer(Modifier.height(120.dp)) }
         }
     }
 
-    if (showWeightDialog) {
+    if (weightDialogVisible) {
         WeightInputDialog(
-            onDismiss = { showWeightDialog = false },
-            onSave = { w ->
-                viewModel.addWeight(w)
-                showWeightDialog = false
+            initial = state.currentWeight,
+            onDismiss = { weightDialogVisible = false },
+            onSave = { value ->
+                viewModel.addWeight(value)
+                weightDialogVisible = false
+            }
+        )
+    }
+
+    editingItem?.let { item ->
+        GramsEditDialog(
+            item = item,
+            onDismiss = { editingItem = null },
+            onSave = { grams ->
+                viewModel.updateItemGrams(item, grams)
+                editingItem = null
             }
         )
     }
 }
 
 @Composable
-private fun DateNavigator(date: LocalDate, onPrev: () -> Unit, onNext: () -> Unit) {
-    val isToday = date == LocalDate.now()
-    val formatter = DateTimeFormatter.ofPattern("d MMMM, EEEE", Locale("ru"))
+private fun DateNavigator(
+    date: LocalDate,
+    isToday: Boolean,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onToday: () -> Unit
+) {
+    val formatter = remember { DateTimeFormatter.ofPattern("d MMMM, EEEE", Locale("ru")) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onPrev) { Icon(Icons.Default.ChevronLeft, "Назад") }
+        IconButton(onClick = onPrev) { Icon(Icons.Default.ChevronLeft, "Предыдущий день") }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 if (isToday) "Сегодня" else date.format(formatter),
@@ -196,10 +253,12 @@ private fun DateNavigator(date: LocalDate, onPrev: () -> Unit, onNext: () -> Uni
                 fontWeight = FontWeight.Bold
             )
             if (!isToday) {
-                Text(date.format(DateTimeFormatter.ISO_LOCAL_DATE), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onToday) { Text("Вернуться к сегодня") }
             }
         }
-        IconButton(onClick = onNext, enabled = !isToday) { Icon(Icons.Default.ChevronRight, "Вперёд") }
+        IconButton(onClick = onNext, enabled = !isToday) {
+            Icon(Icons.Default.ChevronRight, "Следующий день")
+        }
     }
 }
 
@@ -207,14 +266,16 @@ private fun DateNavigator(date: LocalDate, onPrev: () -> Unit, onNext: () -> Uni
 private fun WeightCard(currentWeight: Float?, onAddClick: () -> Unit) {
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
         Row(
-            Modifier.padding(20.dp).fillMaxWidth(),
+            Modifier
+                .padding(20.dp)
+                .fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
                 Text("Текущий вес", style = MaterialTheme.typography.labelLarge)
                 Text(
-                    currentWeight?.let { "$it кг" } ?: "—",
+                    currentWeight?.let { NumberFormat.compact(it) + " кг" } ?: "—",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
@@ -229,21 +290,49 @@ private fun WeightCard(currentWeight: Float?, onAddClick: () -> Unit) {
 }
 
 @Composable
-private fun WeightChartCard(history: List<com.opencalori.app.domain.model.WeightEntry>) {
+private fun WeightChartCard(history: List<WeightEntry>) {
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.padding(20.dp)) {
             Text("Динамика веса", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
-            com.opencalori.app.ui.components.WeightChart(
+            WeightChart(
                 history = history,
-                modifier = Modifier.fillMaxWidth().height(160.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
             )
         }
     }
 }
 
 @Composable
-private fun MealCard(meal: Meal, onDelete: () -> Unit) {
+private fun EmptyDiaryCard() {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Box(
+            Modifier
+                .padding(32.dp)
+                .fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                "Пока нет записей.\nСфотографируйте еду или найдите продукт вручную.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun MealCard(
+    meal: Meal,
+    onDeleteMeal: () -> Unit,
+    onDeleteItem: (FoodItem) -> Unit,
+    onEditItem: (FoodItem) -> Unit
+) {
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
         Column(Modifier.padding(16.dp)) {
             Row(
@@ -254,27 +343,43 @@ private fun MealCard(meal: Meal, onDelete: () -> Unit) {
                 Text(meal.mealType.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "${meal.totalCalories.toInt()} ккал",
+                        meal.totalCalories.toInt().toString() + " ккал",
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
                     )
-                    IconButton(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, contentDescription = "Удалить", tint = MaterialTheme.colorScheme.error)
+                    IconButton(
+                        onClick = onDeleteMeal,
+                        modifier = Modifier.semantics { contentDescription = "Удалить приём пищи" }
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                     }
                 }
             }
+
             meal.items.forEach { item ->
                 Row(
-                    Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(item.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    Text(
-                        "${item.grams.toInt()} г • ${item.calories.toInt()} ккал",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(item.name, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            NumberFormat.compact(item.grams) + " г • " + item.calories.toInt() + " ккал",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    TextButton(onClick = { onEditItem(item) }) { Text("Изменить") }
+                    IconButton(onClick = { onDeleteItem(item) }) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Удалить " + item.name,
+                            tint = MaterialTheme.colorScheme.outline
+                        )
+                    }
                 }
             }
         }
@@ -282,25 +387,60 @@ private fun MealCard(meal: Meal, onDelete: () -> Unit) {
 }
 
 @Composable
-private fun WeightInputDialog(onDismiss: () -> Unit, onSave: (Float) -> Unit) {
-    var text by remember { mutableStateOf("") }
+private fun WeightInputDialog(initial: Float?, onDismiss: () -> Unit, onSave: (Float) -> Unit) {
+    var text by remember { mutableStateOf(initial?.let { NumberFormat.compact(it) } ?: "") }
+    val value = NumberFormat.parse(text)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Записать вес") },
         text = {
             OutlinedTextField(
                 value = text,
-                onValueChange = { text = it.filter { c -> c.isDigit() || c == '.' }.take(6) },
-                label = { Text("Вес (кг)") },
+                onValueChange = { text = NumberFormat.sanitizeDecimalInput(it, maxLength = 5) },
+                label = { Text("Вес, кг") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                isError = text.isNotEmpty() && (value == null || value !in 30f..300f),
+                supportingText = { Text("От 30 до 300 кг") },
                 singleLine = true
             )
         },
         confirmButton = {
             TextButton(
-                onClick = { text.toFloatOrNull()?.let { onSave(it) } },
-                enabled = (text.toFloatOrNull() ?: 0f) in 30f..300f
+                onClick = { value?.let(onSave) },
+                enabled = value != null && value in 30f..300f
             ) { Text("Сохранить") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
+    )
+}
+
+@Composable
+private fun GramsEditDialog(item: FoodItem, onDismiss: () -> Unit, onSave: (Float) -> Unit) {
+    var text by remember(item.id) { mutableStateOf(NumberFormat.compact(item.grams)) }
+    val grams = NumberFormat.parse(text)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(item.name) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = NumberFormat.sanitizeDecimalInput(it) },
+                    label = { Text("Масса, г") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true
+                )
+                Text(
+                    "Итого: " + ((grams ?: 0f) * item.caloriesPer100g / 100f).toInt() + " ккал",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { grams?.let(onSave) }, enabled = grams != null && grams > 0f) {
+                Text("Сохранить")
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
     )

@@ -2,11 +2,14 @@ package com.opencalori.app.data.network.dto
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.put
 
 // ---------- Request ----------
 
@@ -18,41 +21,52 @@ data class ChatCompletionRequest(
     val temperature: Float = 0.2f
 )
 
+/**
+ * `content` is a raw JsonElement on purpose.
+ *
+ * Plenty of OpenAI-compatible servers (llama.cpp, LM Studio, older proxies) reject the
+ * multipart array form for text-only messages and expect a plain string, so we send a
+ * string when there is no image and the array form only when there is.
+ */
 @Serializable
 data class ChatMessage(
     val role: String,
-    val content: List<ContentPart>
+    val content: JsonElement
 ) {
     companion object {
-        fun text(role: String, text: String) =
-            ChatMessage(role, listOf(ContentPart(type = "text", text = text)))
+        fun text(role: String, text: String) = ChatMessage(role, JsonPrimitive(text))
 
-        fun vision(role: String, text: String, imageBase64: String, mimeType: String = "image/jpeg") =
-            ChatMessage(
-                role,
-                listOf(
-                    ContentPart(type = "text", text = text),
-                    ContentPart(
-                        type = "image_url",
-                        imageUrl = ImageUrl(url = "data:$mimeType;base64,$imageBase64")
-                    )
+        fun vision(
+            role: String,
+            text: String,
+            imageBase64: String,
+            mimeType: String = "image/jpeg",
+            detail: String = "auto"
+        ) = ChatMessage(
+            role,
+            buildJsonArray {
+                add(
+                    buildJsonObject {
+                        put("type", "text")
+                        put("text", text)
+                    }
                 )
-            )
+                add(
+                    buildJsonObject {
+                        put("type", "image_url")
+                        put(
+                            "image_url",
+                            buildJsonObject {
+                                put("url", "data:" + mimeType + ";base64," + imageBase64)
+                                put("detail", detail)
+                            }
+                        )
+                    }
+                )
+            }
+        )
     }
 }
-
-@Serializable
-data class ContentPart(
-    val type: String,
-    val text: String? = null,
-    @SerialName("image_url") val imageUrl: ImageUrl? = null
-)
-
-@Serializable
-data class ImageUrl(
-    val url: String,
-    val detail: String = "auto"
-)
 
 // ---------- Response ----------
 
@@ -61,28 +75,27 @@ data class ChatCompletionResponse(
     val choices: List<Choice> = emptyList(),
     val error: ApiError? = null
 ) {
+    /** Text of the first choice, tolerating both the string and the multipart array form. */
     val firstText: String?
-        get() = choices.firstOrNull()?.message?.content?.let { content ->
-            // content may be plain string or list of parts depending on provider
-            when (content) {
-                is JsonElement -> extractText(content)
-                else -> null
-            }
+        get() = choices.firstOrNull()?.message?.let { message ->
+            message.content?.let(::flatten) ?: message.reasoningContent
         }
 
-    private fun extractText(element: JsonElement): String? {
-        return runCatching {
-            when {
-                element is JsonObject -> element["text"]?.jsonPrimitive?.content
-                element.jsonPrimitive.isString -> element.jsonPrimitive.content
-                else -> {
-                    // try as array of parts
-                    element.jsonArray.joinToString("\n") { part ->
-                        part.jsonObject["text"]?.jsonPrimitive?.content ?: ""
-                    }
+    private fun flatten(element: JsonElement): String? = when (element) {
+        is JsonPrimitive -> element.contentOrNull
+        is JsonArray -> element
+            .mapNotNull { part ->
+                when (part) {
+                    is JsonPrimitive -> part.contentOrNull
+                    is JsonObject -> (part["text"] as? JsonPrimitive)?.contentOrNull
+                    else -> null
                 }
             }
-        }.getOrNull()
+            .joinToString("\n")
+            .takeIf { it.isNotBlank() }
+
+        is JsonObject -> (element["text"] as? JsonPrimitive)?.contentOrNull
+        else -> null
     }
 }
 
@@ -93,7 +106,8 @@ data class Choice(
 
 @Serializable
 data class ResponseMessage(
-    val content: JsonElement? = null
+    val content: JsonElement? = null,
+    @SerialName("reasoning_content") val reasoningContent: String? = null
 )
 
 @Serializable
@@ -101,4 +115,12 @@ data class ApiError(
     val message: String? = null,
     val type: String? = null,
     val code: String? = null
+)
+
+/** Shape used by providers that wrap the error object: {"error": {"message": ...}}. */
+@Serializable
+data class ApiErrorEnvelope(
+    val error: ApiError? = null,
+    val message: String? = null,
+    val detail: String? = null
 )

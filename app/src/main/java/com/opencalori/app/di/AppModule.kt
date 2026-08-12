@@ -4,10 +4,10 @@ import android.content.Context
 import androidx.room.Room
 import com.opencalori.app.data.local.AppDatabase
 import com.opencalori.app.data.local.ProductDatabase
+import com.opencalori.app.data.local.dao.CustomProductDao
 import com.opencalori.app.data.local.dao.MealDao
 import com.opencalori.app.data.local.dao.ProductDao
 import com.opencalori.app.data.local.dao.WeightDao
-import com.opencalori.app.data.network.OpenAiClient
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -23,7 +23,8 @@ object AppModule {
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
-            .fallbackToDestructiveMigration()
+            // No destructive fallback: this database is the user's entire food history.
+            .addMigrations(*AppDatabase.MIGRATIONS)
             .build()
 
     @Provides
@@ -33,16 +34,17 @@ object AppModule {
     fun provideWeightDao(db: AppDatabase): WeightDao = db.weightDao()
 
     @Provides
+    fun provideCustomProductDao(db: AppDatabase): CustomProductDao = db.customProductDao()
+
+    @Provides
     @Singleton
     fun provideProductDatabase(@ApplicationContext context: Context): ProductDatabase =
         Room.databaseBuilder(context, ProductDatabase::class.java, "products.db")
             .createFromAsset(ProductDatabase.ASSET_PATH)
+            // The bundled catalogue carries no user data, so replacing it is safe.
+            .fallbackToDestructiveMigration()
             .build()
 
     @Provides
     fun provideProductDao(db: ProductDatabase): ProductDao = db.productDao()
-
-    @Provides
-    @Singleton
-    fun provideOpenAiClient(): OpenAiClient = OpenAiClient()
 }

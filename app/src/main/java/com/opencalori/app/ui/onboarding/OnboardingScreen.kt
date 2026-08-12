@@ -50,32 +50,42 @@ fun OnboardingScreen(
             .fillMaxSize()
             .systemBarsPadding()
             .padding(24.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text("OpenCalori 🥑", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(4.dp))
         Text(
             "Настроим вашу норму калорий",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        Spacer(Modifier.height(16.dp))
 
-        LinearProgressIndicator(
-            progress = { (state.step + 1) / 4f },
-            modifier = Modifier.fillMaxWidth()
-        )
+        if (state.result == null) {
+            LinearProgressIndicator(
+                progress = { (state.step + 1) / TOTAL_STEPS.toFloat() },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(16.dp))
+        }
 
-        when {
-            state.result != null -> ResultStep(state, onSave = { viewModel.saveAndFinish(onFinished) })
-            else -> when (state.step) {
-                0 -> GenderStep(state.gender, viewModel::setGender)
-                1 -> MetricsStep(state, viewModel)
-                2 -> ActivityStep(state.activityLevel, viewModel::setActivity)
-                3 -> GoalStep(state.goal, viewModel::setGoal)
+        // The scrollable part only takes the space that is left, so the buttons below stay
+        // pinned to the bottom instead of drifting off-screen on small displays.
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            when {
+                state.result != null -> ResultStep(state)
+                state.step == 0 -> GenderStep(state.gender, viewModel::setGender)
+                state.step == 1 -> MetricsStep(state, viewModel)
+                state.step == 2 -> ActivityStep(state.activityLevel, viewModel::setActivity)
+                else -> GoalStep(state.goal, viewModel::setGoal)
             }
         }
 
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(16.dp))
 
         if (state.result == null) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -89,52 +99,70 @@ fun OnboardingScreen(
                     enabled = viewModel.canProceed(),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(if (state.step == 3) "Рассчитать" else "Далее")
+                    Text(if (state.step == TOTAL_STEPS - 1) "Рассчитать" else "Далее")
+                }
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = viewModel::editAgain, modifier = Modifier.weight(1f)) {
+                    Text("Изменить")
+                }
+                Button(
+                    onClick = { viewModel.saveAndFinish(onFinished) },
+                    enabled = !state.saving,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(if (state.saving) "Сохранение…" else "Начать")
                 }
             }
         }
     }
 }
 
+private const val TOTAL_STEPS = 4
+
 @Composable
 private fun GenderStep(selected: Gender, onSelect: (Gender) -> Unit) {
     Text("Ваш пол", style = MaterialTheme.typography.titleLarge)
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        FilterChip(
-            selected = selected == Gender.MALE,
-            onClick = { onSelect(Gender.MALE) },
-            label = { Text("Мужской") }
-        )
-        FilterChip(
-            selected = selected == Gender.FEMALE,
-            onClick = { onSelect(Gender.FEMALE) },
-            label = { Text("Женский") }
-        )
+        Gender.entries.forEach { gender ->
+            FilterChip(
+                selected = selected == gender,
+                onClick = { onSelect(gender) },
+                label = { Text(gender.label) }
+            )
+        }
     }
 }
 
 @Composable
-private fun MetricsStep(state: OnboardingUiState, vm: OnboardingViewModel) {
+private fun MetricsStep(state: OnboardingUiState, viewModel: OnboardingViewModel) {
     Text("Параметры тела", style = MaterialTheme.typography.titleLarge)
     OutlinedTextField(
         value = state.age,
-        onValueChange = vm::setAge,
-        label = { Text("Возраст (лет)") },
+        onValueChange = viewModel::setAge,
+        label = { Text("Возраст, лет") },
+        isError = state.age.isNotEmpty() && state.ageValue == null,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        singleLine = true,
         modifier = Modifier.fillMaxWidth()
     )
     OutlinedTextField(
         value = state.height,
-        onValueChange = vm::setHeight,
-        label = { Text("Рост (см)") },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        onValueChange = viewModel::setHeight,
+        label = { Text("Рост, см") },
+        isError = state.height.isNotEmpty() && state.heightValue == null,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        singleLine = true,
         modifier = Modifier.fillMaxWidth()
     )
     OutlinedTextField(
         value = state.weight,
-        onValueChange = vm::setWeight,
-        label = { Text("Вес (кг)") },
+        onValueChange = viewModel::setWeight,
+        label = { Text("Вес, кг") },
+        isError = state.weight.isNotEmpty() && state.weightValue == null,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        singleLine = true,
         modifier = Modifier.fillMaxWidth()
     )
 }
@@ -147,7 +175,7 @@ private fun ActivityStep(selected: ActivityLevel, onSelect: (ActivityLevel) -> U
             FilterChip(
                 selected = selected == level,
                 onClick = { onSelect(level) },
-                label = { Text(level.labelRes) },
+                label = { Text(level.label + " • " + level.hint) },
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -162,7 +190,7 @@ private fun GoalStep(selected: Goal, onSelect: (Goal) -> Unit) {
             FilterChip(
                 selected = selected == goal,
                 onClick = { onSelect(goal) },
-                label = { Text(goal.labelRes) },
+                label = { Text(goal.label + " • " + goal.hint) },
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -170,8 +198,8 @@ private fun GoalStep(selected: Goal, onSelect: (Goal) -> Unit) {
 }
 
 @Composable
-private fun ResultStep(state: OnboardingUiState, onSave: () -> Unit) {
-    val r = state.result ?: return
+private fun ResultStep(state: OnboardingUiState) {
+    val result = state.result ?: return
     Text("Ваша норма", style = MaterialTheme.typography.titleLarge)
 
     Card(
@@ -179,23 +207,31 @@ private fun ResultStep(state: OnboardingUiState, onSave: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
         Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("${r.targetCalories}", style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold)
+            Text(
+                result.targetCalories.toString(),
+                style = MaterialTheme.typography.displayMedium,
+                fontWeight = FontWeight.Bold
+            )
             Text("ккал / день", style = MaterialTheme.typography.bodyLarge)
             Spacer(Modifier.height(8.dp))
-            Text("BMR: ${r.bmr.toInt()} ккал • TDEE: ${r.tdee.toInt()} ккал",
-                style = MaterialTheme.typography.bodySmall)
+            Text(
+                "BMR " + result.bmr.toInt() + " ккал • TDEE " + result.tdee.toInt() + " ккал",
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            LegendDot(ProteinColor, "Белки: ${r.proteinGrams} г")
-            LegendDot(FatColor, "Жиры: ${r.fatGrams} г")
-            LegendDot(CarbsColor, "Углеводы: ${r.carbsGrams} г")
+            LegendDot(ProteinColor, "Белки: " + result.proteinGrams + " г")
+            LegendDot(FatColor, "Жиры: " + result.fatGrams + " г")
+            LegendDot(CarbsColor, "Углеводы: " + result.carbsGrams + " г")
         }
     }
 
-    Button(onClick = onSave, enabled = !state.saving, modifier = Modifier.fillMaxWidth()) {
-        Text(if (state.saving) "Сохранение…" else "Начать")
-    }
+    Text(
+        "Норму всегда можно пересчитать в настройках.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }

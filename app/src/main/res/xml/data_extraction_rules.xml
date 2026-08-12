@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The BYOK key lives in EncryptedSharedPreferences, whose master key sits in the hardware
+  Keystore and is never backed up. Restoring the encrypted file onto a new device would
+  produce an undecryptable blob and crash on first read, so it is excluded. The diary and
+  the profile are ordinary data and stay in the backup.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="byok_api_prefs.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="byok_api_prefs.xml" />
+    </device-transfer>
+</data-extraction-rules>

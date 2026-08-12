@@ -13,6 +13,7 @@ import com.opencalori.app.domain.model.ActivityLevel
 import com.opencalori.app.domain.model.Gender
 import com.opencalori.app.domain.model.Goal
 import com.opencalori.app.domain.model.UserProfile
+import com.opencalori.app.domain.repository.UserPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -24,7 +25,8 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 @Singleton
 class UserPreferencesStore @Inject constructor(
     @ApplicationContext private val context: Context
-) {
+) : UserPreferences {
+
     private object Keys {
         val GENDER = stringPreferencesKey("gender")
         val AGE = intPreferencesKey("age")
@@ -33,6 +35,7 @@ class UserPreferencesStore @Inject constructor(
         val ACTIVITY = stringPreferencesKey("activity_level")
         val GOAL = stringPreferencesKey("goal")
         val ONBOARDED = booleanPreferencesKey("onboarding_completed")
+
         // AI settings
         val AI_ENABLED = booleanPreferencesKey("ai_enabled")
         val AI_SKIP_LIST = booleanPreferencesKey("ai_skip_list_review")
@@ -40,7 +43,7 @@ class UserPreferencesStore @Inject constructor(
         val AI_SKIP_FINAL = booleanPreferencesKey("ai_skip_final_review")
     }
 
-    val profile: Flow<UserProfile> = context.dataStore.data.map { prefs ->
+    override val profile: Flow<UserProfile> = context.dataStore.data.map { prefs ->
         UserProfile(
             gender = prefs[Keys.GENDER]?.let { runCatching { Gender.valueOf(it) }.getOrNull() } ?: Gender.MALE,
             age = prefs[Keys.AGE] ?: 25,
@@ -57,7 +60,7 @@ class UserPreferencesStore @Inject constructor(
         )
     }
 
-    suspend fun saveProfile(profile: UserProfile) {
+    override suspend fun saveProfile(profile: UserProfile) {
         context.dataStore.edit { prefs ->
             prefs[Keys.GENDER] = profile.gender.name
             prefs[Keys.AGE] = profile.age
@@ -73,19 +76,24 @@ class UserPreferencesStore @Inject constructor(
         }
     }
 
-    suspend fun setAiEnabled(enabled: Boolean) {
+    /** Keeps the calorie target in sync with the weight logged in the diary. */
+    override suspend fun setWeight(weightKg: Float) {
+        context.dataStore.edit { it[Keys.WEIGHT] = weightKg }
+    }
+
+    override suspend fun setAiEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.AI_ENABLED] = enabled }
     }
 
-    suspend fun setAiSkipListReview(skip: Boolean) {
+    override suspend fun setAiSkipListReview(skip: Boolean) {
         context.dataStore.edit { it[Keys.AI_SKIP_LIST] = skip }
     }
 
-    suspend fun setAiSkipGramsReview(skip: Boolean) {
+    override suspend fun setAiSkipGramsReview(skip: Boolean) {
         context.dataStore.edit { it[Keys.AI_SKIP_GRAMS] = skip }
     }
 
-    suspend fun setAiSkipFinalReview(skip: Boolean) {
+    override suspend fun setAiSkipFinalReview(skip: Boolean) {
         context.dataStore.edit { it[Keys.AI_SKIP_FINAL] = skip }
     }
 }

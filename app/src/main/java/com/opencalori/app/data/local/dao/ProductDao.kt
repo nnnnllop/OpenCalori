@@ -15,13 +15,16 @@ interface ProductDao {
         SELECT p.* FROM products p
         JOIN products_fts fts ON p.id = fts.docid
         WHERE products_fts MATCH :ftsQuery
-        ORDER BY p.name
+        ORDER BY LENGTH(p.name), p.name
         LIMIT :limit
         """
     )
     fun searchFts(ftsQuery: String, limit: Int = 50): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products WHERE name LIKE '%' || :query || '%' ORDER BY name LIMIT :limit")
+    /** Fallback used when the FTS query cannot be built (single letter, punctuation only). */
+    @Query(
+        "SELECT * FROM products WHERE name LIKE '%' || :query || '%' ORDER BY LENGTH(name), name LIMIT :limit"
+    )
     fun searchLike(query: String, limit: Int = 50): Flow<List<ProductEntity>>
 
     @Query("SELECT * FROM products WHERE id = :id")
