@@ -79,17 +79,20 @@ fun DashboardScreen(
             )
         },
         floatingActionButton = {
+            val profile by viewModel.profile.collectAsState()
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ExtendedFloatingActionButton(
                     onClick = onNavigateToSearch,
                     icon = { Icon(Icons.Default.Search, null) },
                     text = { Text("Поиск") }
                 )
-                ExtendedFloatingActionButton(
-                    onClick = onNavigateToScanner,
-                    icon = { Icon(Icons.Default.PhotoCamera, null) },
-                    text = { Text("Сканер") }
-                )
+                if (profile?.aiEnabled == true) {
+                    ExtendedFloatingActionButton(
+                        onClick = onNavigateToScanner,
+                        icon = { Icon(Icons.Default.PhotoCamera, null) },
+                        text = { Text("Сканер") }
+                    )
+                }
             }
         }
     ) { padding ->

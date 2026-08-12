@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -72,55 +73,112 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ---- BYOK section ----
-            Text("BYOK: подключение ИИ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(
-                "Введите данные любого OpenAI-совместимого API. Ключ хранится в зашифрованном виде на устройстве.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // ---- AI toggle ----
+            Text("Искусственный интеллект", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
-            OutlinedTextField(
-                value = state.baseUrl,
-                onValueChange = viewModel::setBaseUrl,
-                label = { Text("Base URL") },
-                placeholder = { Text("https://api.openai.com/v1") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = state.apiKey,
-                onValueChange = viewModel::setApiKey,
-                label = { Text("API Key") },
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = state.modelId,
-                onValueChange = viewModel::setModelId,
-                label = { Text("Model ID") },
-                placeholder = { Text("gpt-4o") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            ValidationStatusCard(state.validation)
-
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
-                    onClick = viewModel::saveAndValidate,
-                    enabled = state.validation.status != ValidationStatus.VALIDATING &&
-                            state.apiKey.isNotBlank() && state.baseUrl.isNotBlank() && state.modelId.isNotBlank(),
-                    modifier = Modifier.weight(1f)
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                Row(
+                    Modifier.padding(16.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (state.validation.status == ValidationStatus.VALIDATING) {
-                        CircularProgressIndicator(modifier = Modifier.height(18.dp).padding(end = 8.dp), strokeWidth = 2.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text("Использовать ИИ", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Сканер еды, распознавание по фото, автоматический расчёт КБЖУ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    Text("Сохранить и проверить")
+                    Switch(
+                        checked = profile?.aiEnabled ?: true,
+                        onCheckedChange = viewModel::setAiEnabled
+                    )
                 }
-                if (state.apiKey.isNotBlank()) {
-                    OutlinedButton(onClick = viewModel::clearApi) { Text("Очистить") }
+            }
+
+            // ---- AI scenario settings (visible only when AI is on) ----
+            if (profile?.aiEnabled == true) {
+                Text("Сценарий анализа", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    "Отключите этапы подтверждения, если доверяете ИИ",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        ScenarioToggle(
+                            title = "Пропустить правку списка",
+                            subtitle = "ИИ сразу переходит к оценке веса",
+                            checked = profile?.aiSkipListReview ?: false,
+                            onCheckedChange = viewModel::setAiSkipListReview
+                        )
+                        ScenarioToggle(
+                            title = "Пропустить правку граммовок",
+                            subtitle = "ИИ сразу переходит к итоговому подсчёту",
+                            checked = profile?.aiSkipGramsReview ?: false,
+                            onCheckedChange = viewModel::setAiSkipGramsReview
+                        )
+                        ScenarioToggle(
+                            title = "Пропустить финальное подтверждение",
+                            subtitle = "Приём пищи сохраняется автоматически",
+                            checked = profile?.aiSkipFinalReview ?: false,
+                            onCheckedChange = viewModel::setAiSkipFinalReview
+                        )
+                    }
+                }
+
+                // ---- BYOK section ----
+                Text("BYOK: подключение ИИ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "Введите данные любого OpenAI-совместимого API. Ключ хранится в зашифрованном виде на устройстве.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedTextField(
+                    value = state.baseUrl,
+                    onValueChange = viewModel::setBaseUrl,
+                    label = { Text("Base URL") },
+                    placeholder = { Text("https://api.openai.com/v1") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = state.apiKey,
+                    onValueChange = viewModel::setApiKey,
+                    label = { Text("API Key") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = state.modelId,
+                    onValueChange = viewModel::setModelId,
+                    label = { Text("Model ID") },
+                    placeholder = { Text("gpt-4o") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                ValidationStatusCard(state.validation)
+
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(
+                        onClick = viewModel::saveAndValidate,
+                        enabled = state.validation.status != ValidationStatus.VALIDATING &&
+                                state.apiKey.isNotBlank() && state.baseUrl.isNotBlank() && state.modelId.isNotBlank(),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (state.validation.status == ValidationStatus.VALIDATING) {
+                            CircularProgressIndicator(modifier = Modifier.height(18.dp).padding(end = 8.dp), strokeWidth = 2.dp)
+                        }
+                        Text("Сохранить и проверить")
+                    }
+                    if (state.apiKey.isNotBlank()) {
+                        OutlinedButton(onClick = viewModel::clearApi) { Text("Очистить") }
+                    }
                 }
             }
 
@@ -168,11 +226,31 @@ fun SettingsScreen(
             Spacer(Modifier.height(8.dp))
             Text("О приложении", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
-                "OpenCalori v1.0.0 • Лицензия GPL-3.0\nВсе данные хранятся локально на устройстве.",
+                "OpenCalori v0.1.1 • Лицензия GPL-3.0\nВсе данные хранятся локально на устройстве.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+@Composable
+private fun ScenarioToggle(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

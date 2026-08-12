@@ -23,7 +23,12 @@ data class UserProfile(
     val weightKg: Float = 70f,
     val activityLevel: ActivityLevel = ActivityLevel.SEDENTARY,
     val goal: Goal = Goal.MAINTAIN,
-    val onboardingCompleted: Boolean = false
+    val onboardingCompleted: Boolean = false,
+    // AI settings
+    val aiEnabled: Boolean = true,
+    val aiSkipListReview: Boolean = false,      // skip "edit recognized list" step
+    val aiSkipGramsReview: Boolean = false,     // skip "edit grams" step
+    val aiSkipFinalReview: Boolean = false      // skip "final confirmation" step
 )
 
 data class CalorieGoal(

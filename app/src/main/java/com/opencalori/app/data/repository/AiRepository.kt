@@ -4,8 +4,9 @@ import com.opencalori.app.data.network.OpenAiClient
 import com.opencalori.app.data.network.dto.ChatMessage
 import com.opencalori.app.data.preferences.ApiKeyStore
 import com.opencalori.app.domain.model.ApiValidationResult
-import com.opencalori.app.domain.model.EstimatedFoodItem
-import com.opencalori.app.domain.model.RecognizedFood
+import com.opencalori.app.domain.model.EstimatedIngredient
+import com.opencalori.app.domain.model.RecognizedDish
+import com.opencalori.app.domain.model.RecognizedIngredient
 import com.opencalori.app.domain.model.ValidationStatus
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
@@ -81,68 +82,95 @@ class AiRepository @Inject constructor(
         }
     }
 
-    /** Stage 1: recognize the list of food items from the photo. */
-    suspend fun recognizeFood(imageBase64: String): Result<List<RecognizedFood>> = runCatching {
+    /**
+     * Stage 1: recognize the dish name and its ingredient list from the photo.
+     */
+    suspend fun recognizeDish(imageBase64: String): Result<RecognizedDish> = runCatching {
         val config = apiKeyStore.config.first()
         require(config.isConfigured) { "API не настроен" }
 
         val prompt = """
-            Ты — ассистент для подсчёта калорий. Посмотри на фото еды.
-            Перечисли ТОЛЬКО названия продуктов/блюд, которые ты видишь, по одному на строку.
-            Без описаний, без массы, без калорий, без нумерации, без маркеров списка.
-            Отвечай на русском языке. Если еды нет — напиши "Еда не распознана".
+            Ты — эксперт по кулинарии и нутрициологии. Посмотри на фото еды.
+
+            Определи:
+            1. Название блюда (если это сложное блюдо — назови его, если простой набор продуктов — напиши "Продукты").
+            2. Список ингредиентов/продуктов, которые ты видишь.
+
+            Ответь СТРОГО валидным JSON-объектом без markdown-обёртки, без комментариев, в формате:
+            {"dish":"Название блюда","ingredients":["Продукт 1","Продукт 2","Продукт 3"]}
+
+            Правила:
+            - Названия продуктов — на русском языке, кратко (1–3 слова).
+            - Если видишь гарнир и основное блюдо — перечисли их отдельно.
+            - Если еды нет — верни {"dish":"","ingredients":[]}.
         """.trimIndent()
 
         when (val r = client.chatCompletion(
             config,
             listOf(ChatMessage.vision("user", prompt, imageBase64)),
-            maxTokens = 300
+            maxTokens = 400
         )) {
             is OpenAiClient.Result.Success -> {
-                r.text.lines()
-                    .map { it.trim().trimStart('-', '•', '*', '·').trim() }
-                    .filter { it.isNotBlank() && !it.contains("не распознана", ignoreCase = true) }
-                    .map { RecognizedFood(it) }
+                val cleaned = extractJsonObject(r.text)
+                val parsed = json.decodeFromString<DishJson>(cleaned)
+                RecognizedDish(
+                    dishName = parsed.dish.ifBlank { "Блюдо" },
+                    ingredients = parsed.ingredients
+                        .filter { it.isNotBlank() }
+                        .map { RecognizedIngredient(it.trim()) }
+                )
             }
             is OpenAiClient.Result.HttpError -> error("HTTP ${r.code}: ${r.body.take(300)}")
             is OpenAiClient.Result.NetworkError -> error(r.cause)
         }
     }
 
-    /** Stage 2: given user-corrected list + photo, estimate grams/macros. */
+    /**
+     * Stage 2: given user-corrected ingredient list + photo, estimate raw/cooked grams and macros.
+     */
     suspend fun estimateNutrition(
         imageBase64: String,
-        correctedItems: List<String>
-    ): Result<List<EstimatedFoodItem>> = runCatching {
+        dishName: String,
+        correctedIngredients: List<String>
+    ): Result<List<EstimatedIngredient>> = runCatching {
         val config = apiKeyStore.config.first()
         require(config.isConfigured) { "API не настроен" }
 
-        val itemList = correctedItems.joinToString("\n") { "- $it" }
+        val itemList = correctedIngredients.joinToString("\n") { "- $it" }
         val prompt = """
-            Ты — эксперт по нутрициологии. На фото еда. Пользователь подтвердил следующий список продуктов:
+            Ты — эксперт по нутрициологии. На фото: "$dishName".
+            Пользователь подтвердил следующий список ингредиентов:
             $itemList
 
-            Для КАЖДОГО продукта из списка оцени по фото его массу в граммах (учитывай агрегатное состояние: сырой/варёный/жареный),
-            и укажи пищевую ценность НА 100 Г: калории (ккал), белки (г), жиры (г), углеводы (г).
+            Для КАЖДОГО ингредиента оцени по фото:
+            1. Массу в СЫРОМ/СУХОМ виде (граммы) — если применимо (для круп, мяса и т.п.).
+            2. Массу в ГОТОВОМ виде (граммы) — как она выглядит на тарелке.
+            3. Пищевую ценность НА 100 Г ГОТОВОГО продукта: калории (ккал), белки (г), жиры (г), углеводы (г).
+            4. Способ приготовления (notes): "сырой", "варёный", "жареный", "запечённый", "сухой" и т.д.
 
             Ответь СТРОГО валидным JSON-массивом без markdown-обёртки, без комментариев, в формате:
-            [{"name":"Название","grams":150,"calories":130,"protein":2.5,"fat":0.5,"carbs":28,"notes":"варёный"}]
+            [{"name":"Название","rawGrams":80,"cookedGrams":200,"calories":130,"protein":2.5,"fat":0.5,"carbs":28,"notes":"варёный"}]
 
-            Числа — без единиц измерения. Если не уверен — дай разумную оценку.
+            Правила:
+            - Числа — без единиц измерения.
+            - Если сырой вес неприменим (например, для овощного салата) — ставь rawGrams = cookedGrams.
+            - КБЖУ указывай для ГОТОВОГО продукта (как принято в стандартных таблицах).
+            - Если не уверен — дай разумную оценку.
         """.trimIndent()
 
         when (val r = client.chatCompletion(
             config,
             listOf(ChatMessage.vision("user", prompt, imageBase64)),
-            maxTokens = 1500
+            maxTokens = 1800
         )) {
             is OpenAiClient.Result.Success -> {
                 val cleaned = extractJsonArray(r.text)
                 val parsed = json.decodeFromString<List<NutritionJson>>(cleaned)
                 parsed.map {
-                    EstimatedFoodItem(
+                    EstimatedIngredient(
                         name = it.name,
-                        grams = it.grams,
+                        rawGrams = it.rawGrams,
+                        cookedGrams = it.cookedGrams,
                         caloriesPer100g = it.calories,
                         proteinPer100g = it.protein,
                         fatPer100g = it.fat,
@@ -156,9 +184,20 @@ class AiRepository @Inject constructor(
         }
     }
 
+    private fun extractJsonObject(text: String): String {
+        var s = text.trim()
+        if (s.startsWith("```")) {
+            s = s.removePrefix("```json").removePrefix("```JSON").removePrefix("```").trim()
+            if (s.endsWith("```")) s = s.removeSuffix("```").trim()
+        }
+        val start = s.indexOf('{')
+        val end = s.lastIndexOf('}')
+        require(start >= 0 && end > start) { "JSON-объект не найден в ответе: ${s.take(200)}" }
+        return s.substring(start, end + 1)
+    }
+
     private fun extractJsonArray(text: String): String {
         var s = text.trim()
-        // strip markdown code fence if present
         if (s.startsWith("```")) {
             s = s.removePrefix("```json").removePrefix("```JSON").removePrefix("```").trim()
             if (s.endsWith("```")) s = s.removeSuffix("```").trim()
@@ -170,9 +209,16 @@ class AiRepository @Inject constructor(
     }
 
     @kotlinx.serialization.Serializable
+    private data class DishJson(
+        val dish: String = "",
+        val ingredients: List<String> = emptyList()
+    )
+
+    @kotlinx.serialization.Serializable
     private data class NutritionJson(
         val name: String,
-        val grams: Float,
+        val rawGrams: Float = 0f,
+        val cookedGrams: Float = 0f,
         val calories: Float,
         val protein: Float,
         val fat: Float,

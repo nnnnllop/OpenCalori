@@ -22,3 +22,9 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# ErrorProne annotations (referenced by Tink / security-crypto)
+-dontwarn com.google.errorprone.annotations.**
+
+# SLF4J (no binder needed on Android)
+-dontwarn org.slf4j.**

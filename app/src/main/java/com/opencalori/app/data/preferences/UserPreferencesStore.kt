@@ -33,6 +33,11 @@ class UserPreferencesStore @Inject constructor(
         val ACTIVITY = stringPreferencesKey("activity_level")
         val GOAL = stringPreferencesKey("goal")
         val ONBOARDED = booleanPreferencesKey("onboarding_completed")
+        // AI settings
+        val AI_ENABLED = booleanPreferencesKey("ai_enabled")
+        val AI_SKIP_LIST = booleanPreferencesKey("ai_skip_list_review")
+        val AI_SKIP_GRAMS = booleanPreferencesKey("ai_skip_grams_review")
+        val AI_SKIP_FINAL = booleanPreferencesKey("ai_skip_final_review")
     }
 
     val profile: Flow<UserProfile> = context.dataStore.data.map { prefs ->
@@ -44,7 +49,11 @@ class UserPreferencesStore @Inject constructor(
             activityLevel = prefs[Keys.ACTIVITY]?.let { runCatching { ActivityLevel.valueOf(it) }.getOrNull() }
                 ?: ActivityLevel.SEDENTARY,
             goal = prefs[Keys.GOAL]?.let { runCatching { Goal.valueOf(it) }.getOrNull() } ?: Goal.MAINTAIN,
-            onboardingCompleted = prefs[Keys.ONBOARDED] ?: false
+            onboardingCompleted = prefs[Keys.ONBOARDED] ?: false,
+            aiEnabled = prefs[Keys.AI_ENABLED] ?: true,
+            aiSkipListReview = prefs[Keys.AI_SKIP_LIST] ?: false,
+            aiSkipGramsReview = prefs[Keys.AI_SKIP_GRAMS] ?: false,
+            aiSkipFinalReview = prefs[Keys.AI_SKIP_FINAL] ?: false
         )
     }
 
@@ -57,6 +66,26 @@ class UserPreferencesStore @Inject constructor(
             prefs[Keys.ACTIVITY] = profile.activityLevel.name
             prefs[Keys.GOAL] = profile.goal.name
             prefs[Keys.ONBOARDED] = profile.onboardingCompleted
+            prefs[Keys.AI_ENABLED] = profile.aiEnabled
+            prefs[Keys.AI_SKIP_LIST] = profile.aiSkipListReview
+            prefs[Keys.AI_SKIP_GRAMS] = profile.aiSkipGramsReview
+            prefs[Keys.AI_SKIP_FINAL] = profile.aiSkipFinalReview
         }
+    }
+
+    suspend fun setAiEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.AI_ENABLED] = enabled }
+    }
+
+    suspend fun setAiSkipListReview(skip: Boolean) {
+        context.dataStore.edit { it[Keys.AI_SKIP_LIST] = skip }
+    }
+
+    suspend fun setAiSkipGramsReview(skip: Boolean) {
+        context.dataStore.edit { it[Keys.AI_SKIP_GRAMS] = skip }
+    }
+
+    suspend fun setAiSkipFinalReview(skip: Boolean) {
+        context.dataStore.edit { it[Keys.AI_SKIP_FINAL] = skip }
     }
 }

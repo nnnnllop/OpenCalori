@@ -73,4 +73,22 @@ class SettingsViewModel @Inject constructor(
             )
         }
     }
+
+    // ---- AI settings ----
+
+    fun setAiEnabled(enabled: Boolean) {
+        viewModelScope.launch { userPrefs.setAiEnabled(enabled) }
+    }
+
+    fun setAiSkipListReview(skip: Boolean) {
+        viewModelScope.launch { userPrefs.setAiSkipListReview(skip) }
+    }
+
+    fun setAiSkipGramsReview(skip: Boolean) {
+        viewModelScope.launch { userPrefs.setAiSkipGramsReview(skip) }
+    }
+
+    fun setAiSkipFinalReview(skip: Boolean) {
+        viewModelScope.launch { userPrefs.setAiSkipFinalReview(skip) }
+    }
 }
