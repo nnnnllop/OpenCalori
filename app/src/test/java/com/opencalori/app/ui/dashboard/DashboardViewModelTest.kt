@@ -233,11 +233,17 @@ class DashboardViewModelTest {
 
         val vm = viewModel()
         advanceUntilIdle()
-        vm.repeatPreviousDay()
+        vm.requestRepeatPreviousDay()
         advanceUntilIdle()
 
+        assertEquals(2, vm.uiState.value.pendingRepeat?.mealCount)
+        vm.confirmRepeatPreviousDay()
+        advanceUntilIdle()
         assertEquals(2, vm.uiState.value.meals.size)
         assertTrue(meals.addCalls.all { it.first == today.toEpochDay() })
+        vm.undoLastAction()
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.meals.isEmpty())
     }
 
     @Test
@@ -245,7 +251,7 @@ class DashboardViewModelTest {
         val vm = viewModel()
         advanceUntilIdle()
 
-        vm.repeatPreviousDay()
+        vm.requestRepeatPreviousDay()
         advanceUntilIdle()
 
         assertNotNull(vm.uiState.value.message)

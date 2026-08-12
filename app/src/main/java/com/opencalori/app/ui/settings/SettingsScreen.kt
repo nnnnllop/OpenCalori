@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,6 +38,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,6 +59,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.opencalori.app.BuildConfig
+import com.opencalori.app.data.backup.ImportMode
 import com.opencalori.app.domain.model.ApiValidationResult
 import com.opencalori.app.domain.model.ValidationStatus
 import com.opencalori.app.ui.util.NumberFormat
@@ -81,12 +84,16 @@ fun SettingsScreen(
 
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
-    ) { uri -> uri?.let(viewModel::importFrom) }
+    ) { uri -> uri?.let(viewModel::prepareImport) }
 
     LaunchedEffect(state.message) {
-        state.message?.let {
-            snackbarHostState.showSnackbar(it)
-            viewModel.consumeMessage()
+        state.message?.let { message ->
+            val result = snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = if (state.canUndoImport) "Отменить" else null
+            )
+            if (result == SnackbarResult.ActionPerformed) viewModel.undoImport()
+            else viewModel.consumeMessage()
         }
     }
 
@@ -197,6 +204,8 @@ fun SettingsScreen(
                     onValueChange = viewModel::setBaseUrl,
                     label = { Text("Base URL") },
                     placeholder = { Text("https://api.openai.com/v1") },
+                    isError = state.baseUrlError != null,
+                    supportingText = state.baseUrlError?.let { error -> { Text(error) } },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -283,6 +292,38 @@ fun SettingsScreen(
                     }
                     if (state.busy) {
                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    }
+                    state.pendingImport?.let { pending ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Проверка резервной копии", fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Найдено: ${pending.preview.items} продуктов, ${pending.preview.weights} замеров веса, ${pending.preview.products} своих продуктов.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                if (pending.preview.duplicateItems > 0 || pending.preview.duplicateProducts > 0) {
+                                    Text(
+                                        "Будет пропущено дублей: ${pending.preview.duplicateItems + pending.preview.duplicateProducts}.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
+                                Text(
+                                    "Объединить добавит только новые записи. Заменить очистит текущий дневник и восстановит данные из файла.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TextButton(onClick = viewModel::dismissImportPreview) { Text("Отмена") }
+                                    TextButton(onClick = { viewModel.confirmImport(ImportMode.MERGE) }) { Text("Объединить") }
+                                    TextButton(onClick = { viewModel.confirmImport(ImportMode.REPLACE) }) { Text("Заменить") }
+                                }
+                            }
+                        }
                     }
                 }
             }

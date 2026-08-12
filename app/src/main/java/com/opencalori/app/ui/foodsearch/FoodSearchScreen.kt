@@ -53,6 +53,7 @@ import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.domain.model.Product
 import com.opencalori.app.domain.model.ProductSource
 import com.opencalori.app.ui.util.NumberFormat
+import java.time.LocalTime
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -215,6 +216,13 @@ private fun ProductRow(product: Product, onClick: () -> Unit) {
     }
 }
 
+private fun suggestedMealType(hour: Int = LocalTime.now().hour): MealType = when (hour) {
+    in 5..10 -> MealType.BREAKFAST
+    in 11..15 -> MealType.LUNCH
+    in 16..21 -> MealType.DINNER
+    else -> MealType.SNACK
+}
+
 @Composable
 private fun AddProductDialog(
     product: Product,
@@ -222,7 +230,7 @@ private fun AddProductDialog(
     onAdd: (grams: Float, mealType: MealType) -> Unit
 ) {
     var grams by remember { mutableStateOf("100") }
-    var mealType by remember { mutableStateOf(MealType.SNACK) }
+    var mealType by remember { mutableStateOf(suggestedMealType()) }
     val gramsValue = NumberFormat.parse(grams) ?: 0f
 
     AlertDialog(
@@ -269,7 +277,7 @@ private fun CreateProductDialog(
     var fat by remember { mutableStateOf("") }
     var carbs by remember { mutableStateOf("") }
     var grams by remember { mutableStateOf("100") }
-    var mealType by remember { mutableStateOf(MealType.SNACK) }
+    var mealType by remember { mutableStateOf(suggestedMealType()) }
 
     val caloriesValue = NumberFormat.parse(calories)
     val gramsValue = NumberFormat.parse(grams) ?: 0f

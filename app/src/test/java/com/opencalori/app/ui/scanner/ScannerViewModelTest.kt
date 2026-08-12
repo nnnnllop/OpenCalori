@@ -21,6 +21,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.time.LocalTime
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ScannerViewModelTest {
@@ -56,6 +57,14 @@ class ScannerViewModelTest {
     )
 
     private fun photo() = ByteArray(8) { it.toByte() }
+
+    @Test
+    fun `suggested meal type follows the time of day`() {
+        assertEquals(MealType.BREAKFAST, suggestedMealType(LocalTime.of(5, 0)))
+        assertEquals(MealType.LUNCH, suggestedMealType(LocalTime.of(11, 0)))
+        assertEquals(MealType.DINNER, suggestedMealType(LocalTime.of(16, 0)))
+        assertEquals(MealType.SNACK, suggestedMealType(LocalTime.of(22, 0)))
+    }
 
     @Test
     fun `without an api key the scanner explains instead of failing later`() = runTest {

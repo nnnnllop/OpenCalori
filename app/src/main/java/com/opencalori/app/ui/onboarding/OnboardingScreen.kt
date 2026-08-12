@@ -137,12 +137,18 @@ private fun GenderStep(selected: Gender, onSelect: (Gender) -> Unit) {
 
 @Composable
 private fun MetricsStep(state: OnboardingUiState, viewModel: OnboardingViewModel) {
+    val ageError = state.age.isNotEmpty() && state.ageValue == null
+    val heightError = state.height.isNotEmpty() && state.heightValue == null
+    val weightError = state.weight.isNotEmpty() && state.weightValue == null
     Text("Параметры тела", style = MaterialTheme.typography.titleLarge)
     OutlinedTextField(
         value = state.age,
         onValueChange = viewModel::setAge,
         label = { Text("Возраст, лет") },
-        isError = state.age.isNotEmpty() && state.ageValue == null,
+        isError = ageError,
+        supportingText = {
+            Text(if (ageError) "Введите возраст от 10 до 120 лет" else "От 10 до 120 лет")
+        },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         singleLine = true,
         modifier = Modifier.fillMaxWidth()
@@ -151,7 +157,10 @@ private fun MetricsStep(state: OnboardingUiState, viewModel: OnboardingViewModel
         value = state.height,
         onValueChange = viewModel::setHeight,
         label = { Text("Рост, см") },
-        isError = state.height.isNotEmpty() && state.heightValue == null,
+        isError = heightError,
+        supportingText = {
+            Text(if (heightError) "Введите рост от 100 до 250 см" else "От 100 до 250 см")
+        },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         singleLine = true,
         modifier = Modifier.fillMaxWidth()
@@ -160,7 +169,10 @@ private fun MetricsStep(state: OnboardingUiState, viewModel: OnboardingViewModel
         value = state.weight,
         onValueChange = viewModel::setWeight,
         label = { Text("Вес, кг") },
-        isError = state.weight.isNotEmpty() && state.weightValue == null,
+        isError = weightError,
+        supportingText = {
+            Text(if (weightError) "Введите вес от 30 до 300 кг" else "От 30 до 300 кг")
+        },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         singleLine = true,
         modifier = Modifier.fillMaxWidth()

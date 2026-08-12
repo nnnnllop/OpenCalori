@@ -24,12 +24,6 @@ import java.time.Clock
 import java.time.LocalDate
 import javax.inject.Inject
 
-data class RepeatPreview(
-    val sourceDate: LocalDate,
-    val mealCount: Int,
-    val itemCount: Int
-)
-
 data class DashboardUiState(
     val date: LocalDate = LocalDate.now(),
     val today: LocalDate = LocalDate.now(),
@@ -40,14 +34,14 @@ data class DashboardUiState(
     val aiEnabled: Boolean = true,
     val apiConfigured: Boolean = false,
     val message: String? = null,
-    val canUndo: Boolean = false,
-    val pendingRepeat: RepeatPreview? = null
+    val canUndo: Boolean = false
 ) {
     val isToday: Boolean get() = date == today
     val consumedCalories: Float get() = meals.sumOf { it.totalCalories.toDouble() }.toFloat()
     val consumedProtein: Float get() = meals.sumOf { it.totalProtein.toDouble() }.toFloat()
     val consumedFat: Float get() = meals.sumOf { it.totalFat.toDouble() }.toFloat()
     val consumedCarbs: Float get() = meals.sumOf { it.totalCarbs.toDouble() }.toFloat()
+
     /** The scanner is only useful once a BYOK key is in place. */
     val scannerReady: Boolean get() = aiEnabled && apiConfigured
 }
@@ -59,12 +53,6 @@ private data class UndoBuffer(
     val items: List<FoodItem>
 )
 
-/** Complete pre-copy day and newly created meal cards; makes copying fully reversible. */
-private data class RepeatUndo(
-    val originalMeals: List<Meal>,
-    val createdMealIds: List<Long>
-)
-
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
@@ -74,12 +62,15 @@ class DashboardViewModel @Inject constructor(
     private val calculateTdee: CalculateTdeeUseCase,
     private val clock: Clock
 ) : ViewModel() {
+
     private val today: LocalDate get() = LocalDate.now(clock)
+
     private val selectedDate = MutableStateFlow(today)
+
     private val _uiState = MutableStateFlow(DashboardUiState(date = today, today = today))
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
+
     private var undoBuffer: UndoBuffer? = null
-    private var repeatUndo: RepeatUndo? = null
 
     init {
         viewModelScope.launch {
@@ -101,139 +92,92 @@ class DashboardViewModel @Inject constructor(
                     apiConfigured = apiConfig.isConfigured
                 )
             }.collect { fresh ->
+                // Keep transient UI bits (snackbar, undo) that are not part of the DB state.
                 _uiState.update { current ->
-                    fresh.copy(
-                        message = current.message,
-                        canUndo = undoBuffer != null || repeatUndo != null,
-                        pendingRepeat = current.pendingRepeat
-                    )
+                    fresh.copy(message = current.message, canUndo = undoBuffer != null)
                 }
             }
         }
     }
 
-    fun previousDay() { selectedDate.value = selectedDate.value.minusDays(1) }
-    fun nextDay() {
-        if (selectedDate.value.isBefore(today)) selectedDate.value = selectedDate.value.plusDays(1)
+    fun previousDay() {
+        selectedDate.value = selectedDate.value.minusDays(1)
     }
-    fun goToToday() { selectedDate.value = today }
+
+    fun nextDay() {
+        if (selectedDate.value.isBefore(today)) {
+            selectedDate.value = selectedDate.value.plusDays(1)
+        }
+    }
+
+    fun goToToday() {
+        selectedDate.value = today
+    }
 
     fun deleteMeal(meal: Meal) {
-        repeatUndo = null
         undoBuffer = UndoBuffer(meal.dateEpochDay, meal.mealType, meal.items)
         viewModelScope.launch {
             mealRepository.deleteMeal(meal.id)
-            _uiState.update { it.copy(message = "Удалено: ${meal.mealType.label}", canUndo = true) }
+            _uiState.update {
+                it.copy(message = "Удалено: " + meal.mealType.label, canUndo = true)
+            }
         }
     }
 
     fun deleteFoodItem(meal: Meal, item: FoodItem) {
-        repeatUndo = null
         undoBuffer = UndoBuffer(meal.dateEpochDay, meal.mealType, listOf(item))
         viewModelScope.launch {
             mealRepository.deleteFoodItem(item.id)
-            _uiState.update { it.copy(message = "Удалено: ${item.name}", canUndo = true) }
+            _uiState.update { it.copy(message = "Удалено: " + item.name, canUndo = true) }
         }
     }
 
-    fun undoLastAction() {
-        val deleted = undoBuffer
-        if (deleted != null) {
-            undoBuffer = null
-            viewModelScope.launch {
-                mealRepository.addItems(deleted.epochDay, deleted.mealType, deleted.items)
-                _uiState.update { it.copy(message = null, canUndo = false) }
-            }
-            return
-        }
-        val repeat = repeatUndo ?: return
-        repeatUndo = null
+    fun undoDelete() {
+        val buffer = undoBuffer ?: return
+        undoBuffer = null
         viewModelScope.launch {
-            repeat.createdMealIds.distinct().forEach { mealId -> mealRepository.deleteMeal(mealId) }
-            repeat.originalMeals.forEach { meal ->
-                if (meal.items.isNotEmpty()) mealRepository.addItems(meal.dateEpochDay, meal.mealType, meal.items)
-            }
+            mealRepository.addItems(buffer.epochDay, buffer.mealType, buffer.items)
             _uiState.update { it.copy(message = null, canUndo = false) }
         }
     }
-
-    /** Kept for existing callers; all undo routes now go through one explicit action. */
-    fun undoDelete() = undoLastAction()
 
     fun updateItemGrams(item: FoodItem, grams: Float) {
         if (grams <= 0f) return
         viewModelScope.launch { mealRepository.updateFoodItemGrams(item.id, grams) }
     }
 
-    /** Shows a non-destructive preview before touching the visible day's records. */
-    fun requestRepeatPreviousDay() {
+    /** Copies everything eaten on the previous day into the day being viewed. */
+    fun repeatPreviousDay() {
         val target = selectedDate.value
-        val source = target.minusDays(1)
+        val source = target.minusDays(1).toEpochDay()
         viewModelScope.launch {
-            val meals = mealRepository.getMealsBetween(source.toEpochDay(), source.toEpochDay())
+            val meals = mealRepository.getMealsBetween(source, source)
             if (meals.isEmpty()) {
                 _uiState.update { it.copy(message = "За предыдущий день записей нет") }
                 return@launch
             }
-            _uiState.update {
-                it.copy(
-                    pendingRepeat = RepeatPreview(
-                        sourceDate = source,
-                        mealCount = meals.size,
-                        itemCount = meals.sumOf { meal -> meal.items.size }
-                    )
-                )
+            meals.forEach { meal ->
+                mealRepository.addItems(target.toEpochDay(), meal.mealType, meal.items)
             }
+            _uiState.update { it.copy(message = "Скопировано приёмов пищи: " + meals.size) }
         }
     }
-
-    fun dismissRepeatPreviousDay() = _uiState.update { it.copy(pendingRepeat = null) }
-
-    /** Replaces the current day, so the action is deterministic and fully undoable. */
-    fun confirmRepeatPreviousDay() {
-        val preview = _uiState.value.pendingRepeat ?: return
-        val target = selectedDate.value
-        viewModelScope.launch {
-            val sourceMeals = mealRepository.getMealsBetween(preview.sourceDate.toEpochDay(), preview.sourceDate.toEpochDay())
-            if (sourceMeals.isEmpty()) {
-                _uiState.update { it.copy(pendingRepeat = null, message = "За предыдущий день записей нет") }
-                return@launch
-            }
-            val originalMeals = _uiState.value.meals
-            originalMeals.forEach { mealRepository.deleteMeal(it.id) }
-            val createdIds = sourceMeals.mapNotNull { meal ->
-                if (meal.items.isEmpty()) null
-                else mealRepository.addItems(target.toEpochDay(), meal.mealType, meal.items)
-            }
-            undoBuffer = null
-            repeatUndo = RepeatUndo(originalMeals, createdIds)
-            _uiState.update {
-                it.copy(
-                    pendingRepeat = null,
-                    message = "Дневник заменён: скопировано продуктов ${sourceMeals.sumOf { meal -> meal.items.size }}",
-                    canUndo = true
-                )
-            }
-        }
-    }
-
-    /** Compatibility entry point for existing code; UI now requires explicit confirmation. */
-    fun repeatPreviousDay() = requestRepeatPreviousDay()
 
     fun addWeight(weightKg: Float) {
-        if (weightKg !in MIN_WEIGHT..MAX_WEIGHT) {
-            _uiState.update { it.copy(message = "Введите вес от 30 до 300 кг") }
-            return
-        }
+        if (weightKg !in MIN_WEIGHT..MAX_WEIGHT) return
         val date = selectedDate.value
         viewModelScope.launch {
             mealRepository.addWeight(date.toEpochDay(), weightKg)
+            // The calorie target is derived from body weight, so keep the profile in step
+            // instead of freezing it at whatever was typed during onboarding.
             val latest = _uiState.value.weightHistory.maxOfOrNull { it.dateEpochDay } ?: Long.MIN_VALUE
             if (date.toEpochDay() >= latest) userPrefs.setWeight(weightKg)
         }
     }
 
-    fun consumeMessage() = _uiState.update { it.copy(message = null, canUndo = false) }
+    fun consumeMessage() {
+        _uiState.update { it.copy(message = null) }
+    }
 
     private companion object {
         const val MIN_WEIGHT = 30f

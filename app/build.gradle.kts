@@ -1,3 +1,17 @@
+import java.util.Properties
+
+val signingProperties = Properties().apply {
+    val propertiesFile = rootProject.file("local.properties")
+    if (propertiesFile.exists()) {
+        propertiesFile.inputStream().use(::load)
+    }
+}
+
+fun signingValue(name: String): String =
+    signingProperties.getProperty(name)
+        ?: System.getenv(name.uppercase())
+        ?: error("Missing release signing property: $name. Add it to local.properties or the environment.")
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -27,8 +41,18 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = rootProject.file(signingValue("releaseStoreFile"))
+            storePassword = signingValue("releaseStorePassword")
+            keyAlias = signingValue("releaseKeyAlias")
+            keyPassword = signingValue("releaseKeyPassword")
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

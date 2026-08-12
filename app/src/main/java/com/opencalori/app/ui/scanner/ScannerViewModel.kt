@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.LocalTime
 import javax.inject.Inject
 
 enum class ScannerStage {
@@ -41,13 +42,20 @@ enum class ScannerStage {
 
 enum class GramsEditMode { RAW, COOKED }
 
+internal fun suggestedMealType(time: LocalTime = LocalTime.now()): MealType = when (time.hour) {
+    in 5..10 -> MealType.BREAKFAST
+    in 11..15 -> MealType.LUNCH
+    in 16..21 -> MealType.DINNER
+    else -> MealType.SNACK
+}
+
 data class ScannerUiState(
     val stage: ScannerStage = ScannerStage.CAPTURE,
     val photo: ByteArray? = null,
     val photoBase64: String? = null,
     val dish: RecognizedDish? = null,
     val estimated: List<EstimatedIngredient> = emptyList(),
-    val mealType: MealType = MealType.SNACK,
+    val mealType: MealType = suggestedMealType(),
     val error: String? = null,
     val gramsEditMode: GramsEditMode = GramsEditMode.COOKED,
     val saving: Boolean = false

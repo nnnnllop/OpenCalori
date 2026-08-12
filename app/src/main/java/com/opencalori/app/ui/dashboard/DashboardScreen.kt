@@ -186,7 +186,7 @@ fun DashboardScreen(
                 ) {
                     Text("Приёмы пищи", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     AssistChip(
-                        onClick = viewModel::repeatPreviousDay,
+                        onClick = viewModel::requestRepeatPreviousDay,
                         label = { Text("Повторить вчера") },
                         leadingIcon = { Icon(Icons.Default.ContentCopy, null, Modifier.width(18.dp)) }
                     )
@@ -227,6 +227,27 @@ fun DashboardScreen(
                 viewModel.updateItemGrams(item, grams)
                 editingItem = null
             }
+        )
+    }
+    state.pendingRepeat?.let { preview ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissRepeatPreviousDay,
+            title = { Text("Заменить дневник?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Будет скопировано ${preview.itemCount} продуктов из ${preview.mealCount} приёмов пищи за ${preview.sourceDate}.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        "Текущие записи за выбранный день будут заменены. Сразу после этого действие можно отменить.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = viewModel::confirmRepeatPreviousDay) { Text("Заменить") } },
+            dismissButton = { TextButton(onClick = viewModel::dismissRepeatPreviousDay) { Text("Отмена") } }
         )
     }
 }
@@ -390,6 +411,7 @@ private fun MealCard(
 private fun WeightInputDialog(initial: Float?, onDismiss: () -> Unit, onSave: (Float) -> Unit) {
     var text by remember { mutableStateOf(initial?.let { NumberFormat.compact(it) } ?: "") }
     val value = NumberFormat.parse(text)
+    val hasWeightError = text.isNotEmpty() && (value == null || value !in 30f..300f)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Записать вес") },
@@ -399,8 +421,10 @@ private fun WeightInputDialog(initial: Float?, onDismiss: () -> Unit, onSave: (F
                 onValueChange = { text = NumberFormat.sanitizeDecimalInput(it, maxLength = 5) },
                 label = { Text("Вес, кг") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                isError = text.isNotEmpty() && (value == null || value !in 30f..300f),
-                supportingText = { Text("От 30 до 300 кг") },
+                isError = hasWeightError,
+                supportingText = {
+                    Text(if (hasWeightError) "Введите вес от 30 до 300 кг" else "От 30 до 300 кг")
+                },
                 singleLine = true
             )
         },

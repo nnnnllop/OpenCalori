@@ -25,6 +25,7 @@ Thumbs.db
 *.apk
 *.aab
 *.keystore
+*.jks
 !debug.keystore
 captures/
 .externalNativeBuild/

@@ -1,6 +1,7 @@
 package com.opencalori.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,8 +30,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.opencalori.app.ui.theme.CarbsColor
+import com.opencalori.app.ui.theme.CarbsColorDark
 import com.opencalori.app.ui.theme.FatColor
+import com.opencalori.app.ui.theme.FatColorDark
 import com.opencalori.app.ui.theme.ProteinColor
+import com.opencalori.app.ui.theme.ProteinColorDark
 import kotlin.math.roundToInt
 
 @Composable
@@ -103,12 +107,16 @@ fun MacroProgressBar(
     modifier: Modifier = Modifier
 ) {
     val progress = if (target > 0) (current / target).coerceIn(0f, 1f) else 0f
-    Column(modifier = modifier) {
+    Column(
+        modifier = modifier.semantics {
+            contentDescription = label + ": " + current.roundToInt() + " из " + target.roundToInt() + " граммов"
+        }
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(label, style = MaterialTheme.typography.labelLarge)
+            Text(label, style = MaterialTheme.typography.labelLarge, color = color, fontWeight = FontWeight.Bold)
             Text(
                 current.roundToInt().toString() + "/" + target.roundToInt() + " г",
                 style = MaterialTheme.typography.labelMedium,
@@ -120,8 +128,8 @@ fun MacroProgressBar(
             progress = { progress },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp)),
+                .height(10.dp)
+                .clip(RoundedCornerShape(5.dp)),
             color = color,
             trackColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -140,10 +148,14 @@ fun MacroSummaryRow(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            MacroProgressBar("Белки", protein.first, protein.second, ProteinColor)
-            MacroProgressBar("Жиры", fat.first, fat.second, FatColor)
-            MacroProgressBar("Углеводы", carbs.first, carbs.second, CarbsColor)
+        val darkTheme = isSystemInDarkTheme()
+        val proteinColor = if (darkTheme) ProteinColorDark else ProteinColor
+        val fatColor = if (darkTheme) FatColorDark else FatColor
+        val carbsColor = if (darkTheme) CarbsColorDark else CarbsColor
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            MacroProgressBar("Белки", protein.first, protein.second, proteinColor)
+            MacroProgressBar("Жиры", fat.first, fat.second, fatColor)
+            MacroProgressBar("Углеводы", carbs.first, carbs.second, carbsColor)
         }
     }
 }
@@ -153,7 +165,7 @@ fun LegendDot(color: Color, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier
-                .size(10.dp)
+                .size(12.dp)
                 .clip(CircleShape)
                 .background(color)
         )
