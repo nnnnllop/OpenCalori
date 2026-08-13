@@ -29,6 +29,7 @@ import javax.inject.Inject
 data class FoodSearchUiState(
     val query: String = "",
     val recents: List<Product> = emptyList(),
+    val targetDate: LocalDate = LocalDate.now(),
     val saved: Boolean = false,
     val message: String? = null
 )
@@ -47,7 +48,7 @@ class FoodSearchViewModel @Inject constructor(
 
     private val query = MutableStateFlow("")
 
-    private val _uiState = MutableStateFlow(FoodSearchUiState())
+    private val _uiState = MutableStateFlow(FoodSearchUiState(targetDate = LocalDate.ofEpochDay(targetEpochDay)))
     val uiState: StateFlow<FoodSearchUiState> = _uiState.asStateFlow()
 
     val results: StateFlow<List<Product>> = query

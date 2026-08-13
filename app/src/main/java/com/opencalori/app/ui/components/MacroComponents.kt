@@ -1,5 +1,7 @@
 package com.opencalori.app.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +23,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,10 +32,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.opencalori.app.ui.theme.AppShapes
 import com.opencalori.app.ui.theme.CarbsColor
 import com.opencalori.app.ui.theme.CarbsColorDark
 import com.opencalori.app.ui.theme.FatColor
 import com.opencalori.app.ui.theme.FatColorDark
+import com.opencalori.app.ui.theme.MotionTokens
 import com.opencalori.app.ui.theme.ProteinColor
 import com.opencalori.app.ui.theme.ProteinColorDark
 import kotlin.math.roundToInt
@@ -45,11 +50,21 @@ fun CalorieRing(
     title: String = "Калории сегодня"
 ) {
     val progress = if (target > 0) (consumed / target).coerceIn(0f, 1f) else 0f
-    val remaining = (target - consumed).roundToInt()
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = tween(MotionTokens.Standard),
+        label = "calorie_progress"
+    )
+    val animatedConsumed by animateFloatAsState(
+        targetValue = consumed,
+        animationSpec = tween(MotionTokens.Standard),
+        label = "calorie_value"
+    )
+    val remaining = (target - animatedConsumed).roundToInt()
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = AppShapes.Large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
@@ -66,7 +81,7 @@ fun CalorieRing(
                 }
             ) {
                 CircularProgressIndicator(
-                    progress = { progress },
+                    progress = { animatedProgress },
                     modifier = Modifier.size(160.dp),
                     strokeWidth = 14.dp,
                     color = if (consumed > target) MaterialTheme.colorScheme.error
@@ -75,7 +90,7 @@ fun CalorieRing(
                 )
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        consumed.roundToInt().toString(),
+                        animatedConsumed.roundToInt().toString(),
                         style = MaterialTheme.typography.displaySmall,
                         fontWeight = FontWeight.Bold
                     )
@@ -107,6 +122,11 @@ fun MacroProgressBar(
     modifier: Modifier = Modifier
 ) {
     val progress = if (target > 0) (current / target).coerceIn(0f, 1f) else 0f
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = tween(MotionTokens.Quick),
+        label = "macro_progress"
+    )
     Column(
         modifier = modifier.semantics {
             contentDescription = label + ": " + current.roundToInt() + " из " + target.roundToInt() + " граммов"
@@ -125,7 +145,7 @@ fun MacroProgressBar(
         }
         Spacer(Modifier.height(4.dp))
         LinearProgressIndicator(
-            progress = { progress },
+            progress = { animatedProgress },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(10.dp)
@@ -145,7 +165,7 @@ fun MacroSummaryRow(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = AppShapes.Large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         val darkTheme = isSystemInDarkTheme()

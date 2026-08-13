@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,6 +35,7 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -83,6 +85,7 @@ fun DashboardScreen(
 
     var weightDialogVisible by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<FoodItem?>(null) }
+    var addFoodSheetVisible by remember { mutableStateOf(false) }
 
     // Every destructive action is undoable, which is why none of them ask for confirmation.
     LaunchedEffect(state.message) {
@@ -108,30 +111,11 @@ fun DashboardScreen(
             )
         },
         floatingActionButton = {
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (state.aiEnabled) {
-                    if (state.scannerReady) {
-                        ExtendedFloatingActionButton(
-                            onClick = { onNavigateToScanner(state.date.toEpochDay()) },
-                            icon = { Icon(Icons.Default.PhotoCamera, null) },
-                            text = { Text("Сканер") }
-                        )
-                    } else {
-                        // Sending the user to a scanner that cannot work is a dead end;
-                        // send them where the problem is instead.
-                        ExtendedFloatingActionButton(
-                            onClick = onNavigateToSettings,
-                            icon = { Icon(Icons.Default.Key, null) },
-                            text = { Text("Подключить ИИ") }
-                        )
-                    }
-                }
-                ExtendedFloatingActionButton(
-                    onClick = { onNavigateToSearch(state.date.toEpochDay()) },
-                    icon = { Icon(Icons.Default.Search, null) },
-                    text = { Text("Добавить") }
-                )
-            }
+            ExtendedFloatingActionButton(
+                onClick = { addFoodSheetVisible = true },
+                icon = { Icon(Icons.Default.Add, null) },
+                text = { Text("Добавить еду") }
+            )
         }
     ) { padding ->
         LazyColumn(
@@ -208,6 +192,25 @@ fun DashboardScreen(
         }
     }
 
+    if (addFoodSheetVisible) {
+        ModalBottomSheet(onDismissRequest = { addFoodSheetVisible = false }) {
+            AddFoodBottomSheet(
+                scannerReady = state.aiEnabled && state.scannerReady,
+                onScan = {
+                    addFoodSheetVisible = false
+                    if (state.aiEnabled && state.scannerReady) {
+                        onNavigateToScanner(state.date.toEpochDay())
+                    } else {
+                        onNavigateToSettings()
+                    }
+                },
+                onSearch = {
+                    addFoodSheetVisible = false
+                    onNavigateToSearch(state.date.toEpochDay())
+                }
+            )
+        }
+    }
     if (weightDialogVisible) {
         WeightInputDialog(
             initial = state.currentWeight,
@@ -249,6 +252,38 @@ fun DashboardScreen(
             confirmButton = { TextButton(onClick = viewModel::confirmRepeatPreviousDay) { Text("Заменить") } },
             dismissButton = { TextButton(onClick = viewModel::dismissRepeatPreviousDay) { Text("Отмена") } }
         )
+    }
+}
+
+@Composable
+private fun AddFoodBottomSheet(
+    scannerReady: Boolean,
+    onScan: () -> Unit,
+    onSearch: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 8.dp)
+            .padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Добавить еду", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            "Выберите удобный способ записи в дневник",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Button(onClick = onScan, modifier = Modifier.fillMaxWidth()) {
+            Icon(if (scannerReady) Icons.Default.PhotoCamera else Icons.Default.Key, null)
+            Spacer(Modifier.width(8.dp))
+            Text(if (scannerReady) "Сканировать по фото" else "Подключить ИИ-сканер")
+        }
+        OutlinedButton(onClick = onSearch, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Search, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Найти или добавить вручную")
+        }
     }
 }
 

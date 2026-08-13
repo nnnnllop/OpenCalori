@@ -16,6 +16,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.opencalori.app.ui.dashboard.DashboardScreen
 import com.opencalori.app.ui.foodsearch.FoodSearchScreen
+import com.opencalori.app.ui.theme.MotionTokens
 import com.opencalori.app.ui.onboarding.OnboardingScreen
 import com.opencalori.app.ui.profile.ProfileScreen
 import com.opencalori.app.ui.scanner.ScannerScreen
@@ -51,14 +52,14 @@ fun OpenCaloriNavHost(
         navController = navController,
         startDestination = start ?: Routes.ONBOARDING,
         enterTransition = {
-            slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(220)) +
-                fadeIn(tween(220))
+            slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(MotionTokens.Screen)) +
+                fadeIn(tween(MotionTokens.Standard))
         },
-        exitTransition = { fadeOut(tween(140)) },
-        popEnterTransition = { fadeIn(tween(140)) },
+        exitTransition = { fadeOut(tween(MotionTokens.Quick)) },
+        popEnterTransition = { fadeIn(tween(MotionTokens.Quick)) },
         popExitTransition = {
-            slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(220)) +
-                fadeOut(tween(220))
+            slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(MotionTokens.Screen)) +
+                fadeOut(tween(MotionTokens.Standard))
         }
     ) {
         composable(Routes.ONBOARDING) {

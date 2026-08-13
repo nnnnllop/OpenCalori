@@ -93,6 +93,9 @@ fun ProfileScreen(
                 onValueChange = viewModel::setAge,
                 label = { Text("Возраст, лет") },
                 isError = state.age.isNotEmpty() && state.ageValue == null,
+                supportingText = {
+                    Text(if (state.age.isNotEmpty() && state.ageValue == null) "Введите возраст от 10 до 120 лет" else "От 10 до 120 лет")
+                },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
@@ -102,6 +105,9 @@ fun ProfileScreen(
                 onValueChange = viewModel::setHeight,
                 label = { Text("Рост, см") },
                 isError = state.height.isNotEmpty() && state.heightValue == null,
+                supportingText = {
+                    Text(if (state.height.isNotEmpty() && state.heightValue == null) "Введите рост от 100 до 250 см" else "От 100 до 250 см")
+                },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
@@ -110,7 +116,12 @@ fun ProfileScreen(
                 value = state.weight,
                 onValueChange = viewModel::setWeight,
                 label = { Text("Вес, кг") },
-                supportingText = { Text("Сохранится и в дневнике веса") },
+                supportingText = {
+                    Text(
+                        if (state.weight.isNotEmpty() && state.weightValue == null) "Введите вес от 30 до 300 кг"
+                        else "От 30 до 300 кг · сохранится и в дневнике веса"
+                    )
+                },
                 isError = state.weight.isNotEmpty() && state.weightValue == null,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,

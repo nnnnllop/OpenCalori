@@ -53,7 +53,10 @@ import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.domain.model.Product
 import com.opencalori.app.domain.model.ProductSource
 import com.opencalori.app.ui.util.NumberFormat
+import java.time.LocalDate
 import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,7 +82,16 @@ fun FoodSearchScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Добавить продукт") },
+                title = {
+                    Column {
+                        Text("Добавить продукт")
+                        Text(
+                            targetDateLabel(state.targetDate),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад")
@@ -216,6 +228,12 @@ private fun ProductRow(product: Product, onClick: () -> Unit) {
     }
 }
 
+private fun targetDateLabel(date: LocalDate): String {
+    if (date == LocalDate.now()) return "Запись: сегодня"
+    val formatter = DateTimeFormatter.ofPattern("d MMMM", Locale("ru"))
+    return "Запись: ${date.format(formatter)}"
+}
+
 private fun suggestedMealType(hour: Int = LocalTime.now().hour): MealType = when (hour) {
     in 5..10 -> MealType.BREAKFAST
     in 11..15 -> MealType.LUNCH
@@ -242,6 +260,10 @@ private fun AddProductDialog(
                     value = grams,
                     onValueChange = { grams = NumberFormat.sanitizeDecimalInput(it) },
                     label = { Text("Масса, г") },
+                    isError = grams.isNotEmpty() && gramsValue <= 0f,
+                    supportingText = {
+                        Text(if (grams.isNotEmpty() && gramsValue <= 0f) "Введите массу больше 0 г" else "Укажите массу порции")
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()

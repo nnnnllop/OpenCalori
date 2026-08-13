@@ -56,6 +56,7 @@ data class ScannerUiState(
     val dish: RecognizedDish? = null,
     val estimated: List<EstimatedIngredient> = emptyList(),
     val mealType: MealType = suggestedMealType(),
+    val targetDate: LocalDate = LocalDate.now(),
     val error: String? = null,
     val gramsEditMode: GramsEditMode = GramsEditMode.COOKED,
     val saving: Boolean = false
@@ -77,6 +78,7 @@ data class ScannerUiState(
             dish == other.dish &&
             estimated == other.estimated &&
             mealType == other.mealType &&
+            targetDate == other.targetDate &&
             error == other.error &&
             gramsEditMode == other.gramsEditMode &&
             saving == other.saving
@@ -88,6 +90,7 @@ data class ScannerUiState(
         result = 31 * result + (dish?.hashCode() ?: 0)
         result = 31 * result + estimated.hashCode()
         result = 31 * result + mealType.hashCode()
+        result = 31 * result + targetDate.hashCode()
         result = 31 * result + (error?.hashCode() ?: 0)
         result = 31 * result + gramsEditMode.hashCode()
         result = 31 * result + saving.hashCode()
@@ -108,7 +111,7 @@ class ScannerViewModel @Inject constructor(
     private val targetEpochDay: Long =
         savedStateHandle.get<Long>(Routes.ARG_DATE) ?: LocalDate.now().toEpochDay()
 
-    private val _uiState = MutableStateFlow(ScannerUiState())
+    private val _uiState = MutableStateFlow(ScannerUiState(targetDate = LocalDate.ofEpochDay(targetEpochDay)))
     val uiState: StateFlow<ScannerUiState> = _uiState.asStateFlow()
 
     private var analysisJob: Job? = null

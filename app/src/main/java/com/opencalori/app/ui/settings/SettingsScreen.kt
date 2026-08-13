@@ -185,7 +185,7 @@ fun SettingsScreen(
                         )
                         ScenarioToggle(
                             title = "Пропустить финальное подтверждение",
-                            subtitle = "Приём пищи сохраняется автоматически",
+                            subtitle = "Приём пищи сохраняется автоматически — используйте только при доверии к оценке",
                             checked = profile?.aiSkipFinalReview ?: false,
                             onCheckedChange = viewModel::setAiSkipFinalReview
                         )
@@ -205,7 +205,7 @@ fun SettingsScreen(
                     label = { Text("Base URL") },
                     placeholder = { Text("https://api.openai.com/v1") },
                     isError = state.baseUrlError != null,
-                    supportingText = state.baseUrlError?.let { error -> { Text(error) } },
+                    supportingText = { Text(state.baseUrlError ?: "Адрес OpenAI-совместимого API") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -220,6 +220,7 @@ fun SettingsScreen(
                             Text(if (keyVisible) "Скрыть" else "Показать")
                         }
                     },
+                    supportingText = { Text("Хранится зашифрованно только на этом устройстве") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -228,6 +229,7 @@ fun SettingsScreen(
                     onValueChange = viewModel::setModelId,
                     label = { Text("Model ID") },
                     placeholder = { Text("gpt-4o") },
+                    supportingText = { Text("Идентификатор модели у выбранного провайдера") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )

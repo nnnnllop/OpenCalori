@@ -49,6 +49,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -85,6 +86,15 @@ import com.opencalori.app.ui.components.NumberField
 import com.opencalori.app.ui.util.NumberFormat
 import java.io.File
 import java.nio.ByteBuffer
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+private fun scannerTargetDateLabel(date: LocalDate): String {
+    if (date == LocalDate.now()) return "Запись: сегодня"
+    val formatter = DateTimeFormatter.ofPattern("d MMMM", Locale("ru"))
+    return "Запись: ${date.format(formatter)}"
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
@@ -102,7 +112,16 @@ fun ScannerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Сканер еды") },
+                title = {
+                    Column {
+                        Text("Сканер еды")
+                        Text(
+                            scannerTargetDateLabel(state.targetDate),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад")
@@ -425,6 +444,9 @@ private fun PhotoPreview(photo: ByteArray?, modifier: Modifier = Modifier) {
 
 @Composable
 private fun AnalyzingStage(state: ScannerUiState, onCancel: () -> Unit) {
+    val firstStage = state.stage == ScannerStage.ANALYZING_1
+    val step = if (firstStage) 1 else 2
+    val progress = if (firstStage) 0.5f else 0.85f
     Column(
         Modifier
             .fillMaxSize()
@@ -437,9 +459,17 @@ private fun AnalyzingStage(state: ScannerUiState, onCancel: () -> Unit) {
         CircularProgressIndicator()
         Spacer(Modifier.height(16.dp))
         Text(
-            if (state.stage == ScannerStage.ANALYZING_1) "Определяю блюдо и состав…"
-            else "Оцениваю вес и КБЖУ…",
-            style = MaterialTheme.typography.titleMedium
+            if (firstStage) "Определяю блюдо и состав…" else "Оцениваю вес и КБЖУ…",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(12.dp))
+        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Шаг $step из 2 · обычно 5–15 секунд",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(16.dp))
         TextButton(onClick = onCancel) { Text("Отменить") }
@@ -700,14 +730,25 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        Text("Итоговый подсчёт", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("РС‚РѕРіРѕРІС‹Р№ РїРѕРґСЃС‡С‘С‚", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(
-            "Проверьте значения перед сохранением",
+            "РџСЂРѕРІРµСЂСЊС‚Рµ Р·РЅР°С‡РµРЅРёСЏ РїРµСЂРµРґ СЃРѕС…СЂР°РЅРµРЅРёРµРј",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(12.dp))
-
+        Card(
+            Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Text(
+                "Р РµР·СѓР»СЊС‚Р°С‚ AI РѕСЂРёРµРЅС‚РёСЂРѕРІРѕС‡РЅС‹Р№: РїСЂРѕРІРµСЂСЊС‚Рµ РїРѕСЂС†РёСЋ, СЃРѕСЃС‚Р°РІ Рё РљР‘Р–РЈ РїРµСЂРµРґ СЃРѕС…СЂР°РЅРµРЅРёРµРј.",
+                modifier = Modifier.padding(12.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.height(12.dp))
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(state.estimated, key = { _, item -> item.id }) { _, item ->
                 Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
@@ -719,20 +760,20 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                NumberFormat.compact(item.effectiveGrams) + " г" +
+                                NumberFormat.compact(item.effectiveGrams) + " Рі" +
                                     if (item.notes.isBlank()) "" else " (" + item.notes + ")",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Text(
-                                item.totalCalories.toInt().toString() + " ккал",
+                                item.totalCalories.toInt().toString() + " РєРєР°Р»",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
                         Text(
-                            "Б " + item.totalProtein.toInt() + " • Ж " + item.totalFat.toInt() +
-                                " • У " + item.totalCarbs.toInt(),
+                            "Р‘ " + item.totalProtein.toInt() + " вЂў Р– " + item.totalFat.toInt() +
+                                " вЂў РЈ " + item.totalCarbs.toInt(),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -740,7 +781,6 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
                 }
             }
         }
-
         Card(
             Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -751,23 +791,22 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
                     style = MaterialTheme.typography.displaySmall,
                     fontWeight = FontWeight.Bold
                 )
-                Text("ккал • " + state.mealType.label, style = MaterialTheme.typography.bodyLarge)
+                Text("РєРєР°Р» вЂў " + state.mealType.label, style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Б " + state.totalProtein.toInt() + " г • Ж " + state.totalFat.toInt() +
-                        " г • У " + state.totalCarbs.toInt() + " г",
+                    "Р‘ " + state.totalProtein.toInt() + " Рі вЂў Р– " + state.totalFat.toInt() +
+                        " Рі вЂў РЈ " + state.totalCarbs.toInt() + " Рі",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
         }
-
         Spacer(Modifier.height(12.dp))
         Button(
             onClick = viewModel::saveMeal,
             enabled = state.estimated.isNotEmpty() && !state.saving,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(if (state.saving) "Сохраняем…" else "Сохранить в дневник")
+            Text(if (state.saving) "РЎРѕС…СЂР°РЅСЏРµРјвЂ¦" else "РЎРѕС…СЂР°РЅРёС‚СЊ РІ РґРЅРµРІРЅРёРє")
         }
     }
 }
