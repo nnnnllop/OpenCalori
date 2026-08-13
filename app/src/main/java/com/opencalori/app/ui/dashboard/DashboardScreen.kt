@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -43,7 +44,10 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -55,7 +59,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -178,7 +184,18 @@ fun DashboardScreen(
             }
 
             if (state.meals.isEmpty()) {
-                item { EmptyDiaryCard() }
+                item {
+                    EmptyDiaryCard(
+                        onScan = {
+                            if (state.aiEnabled && state.scannerReady) {
+                                onNavigateToScanner(state.date.toEpochDay())
+                            } else {
+                                onNavigateToSettings()
+                            }
+                        },
+                        onSearch = { onNavigateToSearch(state.date.toEpochDay()) }
+                    )
+                }
             } else {
                 items(state.meals, key = { it.id }) { meal ->
                     MealCard(
@@ -362,22 +379,39 @@ private fun WeightChartCard(history: List<WeightEntry>) {
 }
 
 @Composable
-private fun EmptyDiaryCard() {
+private fun EmptyDiaryCard(
+    onScan: () -> Unit,
+    onSearch: () -> Unit
+) {
     Card(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
-        Box(
+        Column(
             Modifier
-                .padding(32.dp)
+                .padding(24.dp)
                 .fillMaxWidth(),
-            contentAlignment = Alignment.Center
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Text("Дневник пока пуст", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Text(
-                "Пока нет записей.\nСфотографируйте еду или найдите продукт вручную.",
+                "Сфотографируйте еду или найдите продукт вручную.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onScan) {
+                    Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Сканировать")
+                }
+                OutlinedButton(onClick = onSearch) {
+                    Icon(Icons.Default.Search, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Найти продукт")
+                }
+            }
         }
     }
 }
@@ -414,34 +448,78 @@ private fun MealCard(
             }
 
             meal.items.forEach { item ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(item.name, style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            NumberFormat.compact(item.grams) + " г • " + item.calories.toInt() + " ккал",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    TextButton(onClick = { onEditItem(item) }) { Text("Изменить") }
-                    IconButton(onClick = { onDeleteItem(item) }) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "Удалить " + item.name,
-                            tint = MaterialTheme.colorScheme.outline
-                        )
-                    }
-                }
+                SwipeToDeleteFoodItem(
+                    item = item,
+                    onDelete = { onDeleteItem(item) },
+                    onEdit = { onEditItem(item) }
+                )
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeToDeleteFoodItem(
+    item: FoodItem,
+    onDelete: () -> Unit,
+    onEdit: () -> Unit
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                onDelete()
+                true
+            } else {
+                false
+            }
+        }
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 2.dp)
+                .semantics {
+                    customActions = listOf(
+                        CustomAccessibilityAction("Удалить ${item.name}") {
+                            onDelete()
+                            true
+                        }
+                    )
+                },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(item.name, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    NumberFormat.compact(item.grams) + " г • " + item.calories.toInt() + " ккал",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            TextButton(onClick = onEdit) { Text("Изменить") }
+        }
+    }
+}
 @Composable
 private fun WeightInputDialog(initial: Float?, onDismiss: () -> Unit, onSave: (Float) -> Unit) {
     var text by remember { mutableStateOf(initial?.let { NumberFormat.compact(it) } ?: "") }

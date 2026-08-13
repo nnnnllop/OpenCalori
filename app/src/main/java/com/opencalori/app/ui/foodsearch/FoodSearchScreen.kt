@@ -298,6 +298,7 @@ private fun CreateProductDialog(
     var protein by remember { mutableStateOf("") }
     var fat by remember { mutableStateOf("") }
     var carbs by remember { mutableStateOf("") }
+    var showMacros by remember { mutableStateOf(false) }
     var grams by remember { mutableStateOf("100") }
     var mealType by remember { mutableStateOf(suggestedMealType()) }
 
@@ -321,15 +322,19 @@ private fun CreateProductDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text("На 100 г", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MacroInput("Ккал", calories, { calories = it }, Modifier.weight(1f))
-                    MacroInput("Б", protein, { protein = it }, Modifier.weight(1f))
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MacroInput("Ж", fat, { fat = it }, Modifier.weight(1f))
-                    MacroInput("У", carbs, { carbs = it }, Modifier.weight(1f))
-                }
+                MacroInput("Ккал", calories, { calories = it }, Modifier.fillMaxWidth())
                 MacroInput("Съедено, г", grams, { grams = it }, Modifier.fillMaxWidth())
+                TextButton(onClick = { showMacros = !showMacros }) {
+                    Text(if (showMacros) "Скрыть КБЖУ" else "Добавить КБЖУ (необязательно)")
+                }
+                if (showMacros) {
+                    Text("Подробнее · на 100 г", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        MacroInput("Белки", protein, { protein = it }, Modifier.weight(1f))
+                        MacroInput("Жиры", fat, { fat = it }, Modifier.weight(1f))
+                    }
+                    MacroInput("Углеводы", carbs, { carbs = it }, Modifier.fillMaxWidth())
+                }
                 MealTypeRow(selected = mealType, onSelect = { mealType = it })
             }
         },
