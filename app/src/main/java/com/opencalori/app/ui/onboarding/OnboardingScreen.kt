@@ -1,6 +1,7 @@
 package com.opencalori.app.ui.onboarding
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -21,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -51,24 +54,45 @@ fun OnboardingScreen(
             .systemBarsPadding()
             .padding(24.dp)
     ) {
-        Text("OpenCalori 🥑", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "Настроим вашу норму калорий",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(16.dp))
-
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                modifier = Modifier.size(48.dp),
+                shape = androidx.compose.foundation.shape.CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text("OC", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+            }
+            Column {
+                Text(
+                    if (state.result == null) "\u0412\u0430\u0448 \u043f\u043b\u0430\u043d \u043f\u0438\u0442\u0430\u043d\u0438\u044f" else "\u041f\u043b\u0430\u043d \u0433\u043e\u0442\u043e\u0432",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    if (state.result == null) "OpenCalori" else "\u041b\u0438\u0447\u043d\u044b\u0435 \u043e\u0440\u0438\u0435\u043d\u0442\u0438\u0440\u044b \u043d\u0430 \u043a\u0430\u0436\u0434\u044b\u0439 \u0434\u0435\u043d\u044c",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(Modifier.height(20.dp))
         if (state.result == null) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0430 \u043f\u043b\u0430\u043d\u0430", style = MaterialTheme.typography.labelLarge)
+                Text("\u0428\u0430\u0433 " + (state.step + 1) + " \u0438\u0437 " + TOTAL_STEPS, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(8.dp))
             LinearProgressIndicator(
                 progress = { (state.step + 1) / TOTAL_STEPS.toFloat() },
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(16.dp))
-        }
-
-        // The scrollable part only takes the space that is left, so the buttons below stay
+            Spacer(Modifier.height(20.dp))
+        }        // The scrollable part only takes the space that is left, so the buttons below stay
         // pinned to the bottom instead of drifting off-screen on small displays.
         Column(
             modifier = Modifier

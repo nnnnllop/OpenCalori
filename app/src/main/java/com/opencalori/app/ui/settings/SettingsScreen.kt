@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -62,6 +61,7 @@ import com.opencalori.app.BuildConfig
 import com.opencalori.app.data.backup.ImportMode
 import com.opencalori.app.domain.model.ApiValidationResult
 import com.opencalori.app.domain.model.ValidationStatus
+import com.opencalori.app.ui.theme.AppShapes
 import com.opencalori.app.ui.util.NumberFormat
 import java.time.LocalDate
 
@@ -77,6 +77,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var keyVisible by remember { mutableStateOf(false) }
+    var analysisOptionsExpanded by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -120,7 +121,7 @@ fun SettingsScreen(
         ) {
             // ---- Profile ----
             SectionTitle("Профиль")
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+            Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     profile?.let {
                         Text(
@@ -138,7 +139,7 @@ fun SettingsScreen(
 
             // ---- AI ----
             SectionTitle("Искусственный интеллект")
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+            Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
                 Row(
                     Modifier
                         .padding(16.dp)
@@ -162,36 +163,42 @@ fun SettingsScreen(
             }
 
             if (profile?.aiEnabled == true) {
-                SectionTitle("Сценарий анализа", small = true)
-                Text(
-                    "Отключите этапы подтверждения, если доверяете ИИ",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ScenarioToggle(
-                            title = "Пропустить правку списка",
-                            subtitle = "ИИ сразу переходит к оценке веса",
-                            checked = profile?.aiSkipListReview ?: false,
-                            onCheckedChange = viewModel::setAiSkipListReview
+                SectionTitle("\u041a\u043e\u043d\u0442\u0440\u043e\u043b\u044c AI", small = true)
+                Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442\u0430", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "\u041f\u043e \u0443\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e \u0432\u044b \u043f\u0440\u043e\u0432\u0435\u0440\u044f\u0435\u0442\u0435 \u0441\u043e\u0441\u0442\u0430\u0432, \u0432\u0435\u0441 \u0438 \u0438\u0442\u043e\u0433 \u043f\u0435\u0440\u0435\u0434 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u0435\u043c.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        ScenarioToggle(
-                            title = "Пропустить правку граммовок",
-                            subtitle = "ИИ сразу переходит к итоговому подсчёту",
-                            checked = profile?.aiSkipGramsReview ?: false,
-                            onCheckedChange = viewModel::setAiSkipGramsReview
-                        )
-                        ScenarioToggle(
-                            title = "Пропустить финальное подтверждение",
-                            subtitle = "Приём пищи сохраняется автоматически — используйте только при доверии к оценке",
-                            checked = profile?.aiSkipFinalReview ?: false,
-                            onCheckedChange = viewModel::setAiSkipFinalReview
-                        )
+                        TextButton(onClick = { analysisOptionsExpanded = !analysisOptionsExpanded }) {
+                            Text(if (analysisOptionsExpanded) "\u0421\u043a\u0440\u044b\u0442\u044c \u0434\u043e\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c\u043d\u044b\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438" else "\u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c \u044d\u0442\u0430\u043f\u044b \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0438")
+                        }
+                        if (analysisOptionsExpanded) {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                ScenarioToggle(
+                                    title = "\u041f\u0440\u043e\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u043f\u0440\u0430\u0432\u043a\u0443 \u0441\u043f\u0438\u0441\u043a\u0430",
+                                    subtitle = "AI \u0441\u0440\u0430\u0437\u0443 \u043f\u0435\u0440\u0435\u0439\u0434\u0451\u0442 \u043a \u043e\u0446\u0435\u043d\u043a\u0435 \u0432\u0435\u0441\u0430",
+                                    checked = profile?.aiSkipListReview ?: false,
+                                    onCheckedChange = viewModel::setAiSkipListReview
+                                )
+                                ScenarioToggle(
+                                    title = "\u041f\u0440\u043e\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u043f\u0440\u0430\u0432\u043a\u0443 \u0433\u0440\u0430\u043c\u043c\u043e\u0432\u043e\u043a",
+                                    subtitle = "AI \u0441\u0440\u0430\u0437\u0443 \u043f\u0435\u0440\u0435\u0439\u0434\u0451\u0442 \u043a \u0438\u0442\u043e\u0433\u043e\u0432\u043e\u043c\u0443 \u043f\u043e\u0434\u0441\u0447\u0451\u0442\u0443",
+                                    checked = profile?.aiSkipGramsReview ?: false,
+                                    onCheckedChange = viewModel::setAiSkipGramsReview
+                                )
+                                ScenarioToggle(
+                                    title = "\u041f\u0440\u043e\u043f\u0443\u0441\u0442\u0442\u0438\u044c \u0444\u0438\u043d\u0430\u043b\u044c\u043d\u043e\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0438\u0435",
+                                    subtitle = "\u041f\u0440\u0438\u0451\u043c \u043f\u0438\u0449\u0438 \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u0441\u044f \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438",
+                                    checked = profile?.aiSkipFinalReview ?: false,
+                                    onCheckedChange = viewModel::setAiSkipFinalReview
+                                )
+                            }
+                        }
                     }
                 }
-
                 SectionTitle("BYOK: подключение ИИ")
                 Text(
                     "Подойдёт любой OpenAI-совместимый API. Ключ шифруется и остаётся на устройстве.",
@@ -260,7 +267,7 @@ fun SettingsScreen(
 
             // ---- Backup ----
             SectionTitle("Данные")
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+            Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         "Дневник хранится только на этом устройстве. Сделайте резервную копию " +
@@ -299,7 +306,7 @@ fun SettingsScreen(
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = AppShapes.Small
                         ) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Проверка резервной копии", fontWeight = FontWeight.Bold)
@@ -334,7 +341,7 @@ fun SettingsScreen(
             SectionTitle("Поддержать проект")
             Card(
                 Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                shape = AppShapes.Medium,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

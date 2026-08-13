@@ -14,7 +14,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -70,9 +69,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.opencalori.app.domain.model.FoodItem
 import com.opencalori.app.domain.model.Meal
 import com.opencalori.app.domain.model.WeightEntry
-import com.opencalori.app.ui.components.CalorieRing
-import com.opencalori.app.ui.components.MacroSummaryRow
+import com.opencalori.app.ui.components.DailyBalanceCard
 import com.opencalori.app.ui.components.WeightChart
+import com.opencalori.app.ui.theme.AppShapes
 import com.opencalori.app.ui.util.NumberFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -108,7 +107,7 @@ fun DashboardScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("OpenCalori") },
+                title = { Text("\u0414\u043d\u0435\u0432\u043d\u0438\u043a") },
                 actions = {
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Настройки")
@@ -142,21 +141,15 @@ fun DashboardScreen(
             }
 
             item {
-                CalorieRing(
-                    title = if (state.isToday) "Калории сегодня" else "Калории за день",
+                DailyBalanceCard(
+                    title = if (state.isToday) "\u0421\u0435\u0433\u043e\u0434\u043d\u044f" else "\u0412\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u0434\u0435\u043d\u044c",
                     consumed = state.consumedCalories,
-                    target = state.goal?.targetCalories?.toFloat() ?: 2000f
-                )
-            }
-
-            item {
-                MacroSummaryRow(
+                    target = state.goal?.targetCalories?.toFloat() ?: 2000f,
                     protein = state.consumedProtein to (state.goal?.proteinGrams?.toFloat() ?: 100f),
                     fat = state.consumedFat to (state.goal?.fatGrams?.toFloat() ?: 70f),
                     carbs = state.consumedCarbs to (state.goal?.carbsGrams?.toFloat() ?: 250f)
                 )
             }
-
             item {
                 WeightCard(
                     currentWeight = state.currentWeight,
@@ -337,7 +330,7 @@ private fun DateNavigator(
 
 @Composable
 private fun WeightCard(currentWeight: Float?, onAddClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+    Card(Modifier.fillMaxWidth(), shape = AppShapes.Large) {
         Row(
             Modifier
                 .padding(20.dp)
@@ -364,7 +357,7 @@ private fun WeightCard(currentWeight: Float?, onAddClick: () -> Unit) {
 
 @Composable
 private fun WeightChartCard(history: List<WeightEntry>) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+    Card(Modifier.fillMaxWidth(), shape = AppShapes.Large) {
         Column(Modifier.padding(20.dp)) {
             Text("Динамика веса", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
@@ -423,7 +416,7 @@ private fun MealCard(
     onDeleteItem: (FoodItem) -> Unit,
     onEditItem: (FoodItem) -> Unit
 ) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+    Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
         Column(Modifier.padding(16.dp)) {
             Row(
                 Modifier.fillMaxWidth(),

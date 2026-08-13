@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -33,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -52,6 +52,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.domain.model.Product
 import com.opencalori.app.domain.model.ProductSource
+import com.opencalori.app.ui.theme.AppShapes
 import com.opencalori.app.ui.util.NumberFormat
 import java.time.LocalDate
 import java.time.LocalTime
@@ -100,13 +101,14 @@ fun FoodSearchScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { creatingProduct = true },
-                icon = { Icon(Icons.Default.Add, null) },
-                text = { Text("Свой продукт") }
-            )
-        }
-    ) { padding ->
+            if (visible.isNotEmpty()) {
+                ExtendedFloatingActionButton(
+                    onClick = { creatingProduct = true },
+                    icon = { Icon(Icons.Default.Add, null) },
+                    text = { Text("\u0421\u0432\u043e\u0439 \u043f\u0440\u043e\u0434\u0443\u043a\u0442") }
+                )
+            }
+        }    ) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -188,46 +190,68 @@ private fun EmptyState(query: String, onCreate: () -> Unit) {
 @Composable
 private fun ProductRow(product: Product, onClick: () -> Unit) {
     Card(
-        Modifier
+        modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp)
+        shape = AppShapes.Medium
     ) {
-        Column(Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                when (product.source) {
-                    ProductSource.CUSTOM -> Icon(
-                        Icons.Default.Person,
-                        contentDescription = "Свой продукт",
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.primary
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    when (product.source) {
+                        ProductSource.CUSTOM -> Icon(
+                            Icons.Default.Person,
+                            contentDescription = "\u0421\u0432\u043e\u0439 \u043f\u0440\u043e\u0434\u0443\u043a\u0442",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        ProductSource.RECENT -> Icon(
+                            Icons.Default.History,
+                            contentDescription = "\u0418\u0437 \u043d\u0435\u0434\u0430\u0432\u043d\u0435\u0433\u043e",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        ProductSource.BUILT_IN -> Unit
+                    }
+                    if (product.source != ProductSource.BUILT_IN) Spacer(Modifier.size(8.dp))
+                    Text(
+                        product.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1
                     )
-
-                    ProductSource.RECENT -> Icon(
-                        Icons.Default.History,
-                        contentDescription = "Из недавнего",
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    ProductSource.BUILT_IN -> Unit
                 }
-                if (product.source != ProductSource.BUILT_IN) Spacer(Modifier.size(6.dp))
-                Text(product.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Surface(
+                    shape = AppShapes.Pill,
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Text(
+                        product.caloriesPer100g.toInt().toString() + " \u043a\u043a\u0430\u043b",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
             }
-            Spacer(Modifier.height(2.dp))
-            Text(
-                product.caloriesPer100g.toInt().toString() + " ккал • Б " +
-                    NumberFormat.compact(product.proteinPer100g) + " • Ж " +
-                    NumberFormat.compact(product.fatPer100g) + " • У " +
-                    NumberFormat.compact(product.carbsPer100g) + " (на 100 г)",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("\u0411 " + NumberFormat.compact(product.proteinPer100g), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("\u0416 " + NumberFormat.compact(product.fatPer100g), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("\u0423 " + NumberFormat.compact(product.carbsPer100g), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("\u043d\u0430 100 \u0433", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
-
 private fun targetDateLabel(date: LocalDate): String {
     if (date == LocalDate.now()) return "Запись: сегодня"
     val formatter = DateTimeFormatter.ofPattern("d MMMM", Locale("ru"))

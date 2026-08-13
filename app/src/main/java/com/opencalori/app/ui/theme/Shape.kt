@@ -17,3 +17,13 @@ object MotionTokens {
     const val Standard = 220
     const val Screen = 240
 }
+/** Shared spacing scale keeps screen density intentional rather than incidental. */
+object AppSpacing {
+    val XSmall = 4.dp
+    val Small = 8.dp
+    val Medium = 12.dp
+    val Large = 16.dp
+    val XLarge = 20.dp
+    val Section = 24.dp
+    val Screen = 32.dp
+}

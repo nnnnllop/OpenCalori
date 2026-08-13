@@ -26,7 +26,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -54,6 +53,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -83,6 +83,7 @@ import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
 import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.ui.components.NumberField
+import com.opencalori.app.ui.theme.AppShapes
 import com.opencalori.app.ui.util.NumberFormat
 import java.io.File
 import java.nio.ByteBuffer
@@ -438,10 +439,46 @@ private fun PhotoPreview(photo: ByteArray?, modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .height(140.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(AppShapes.Medium)
     )
 }
 
+@Composable
+private fun ScanFlowProgress(currentStep: Int) {
+    val steps = listOf("\u0421\u043e\u0441\u0442\u0430\u0432", "\u0412\u0435\u0441", "\u0418\u0442\u043e\u0433")
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        steps.forEachIndexed { index, label ->
+            val reached = index < currentStep
+            Surface(
+                modifier = Modifier.weight(1f),
+                shape = AppShapes.Pill,
+                color = if (reached) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        (index + 1).toString(),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (reached) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                        color = if (reached) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
 @Composable
 private fun AnalyzingStage(state: ScannerUiState, onCancel: () -> Unit) {
     val firstStage = state.stage == ScannerStage.ANALYZING_1
@@ -520,6 +557,8 @@ private fun ReviewDishStage(state: ScannerUiState, viewModel: ScannerViewModel) 
             .fillMaxSize()
             .padding(16.dp)
     ) {
+        ScanFlowProgress(currentStep = 1)
+        Spacer(Modifier.height(16.dp))
         PhotoPreview(state.photo)
         Spacer(Modifier.height(12.dp))
         Text("Проверьте блюдо и состав", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -598,6 +637,8 @@ private fun ReviewGramsStage(state: ScannerUiState, viewModel: ScannerViewModel)
             .fillMaxSize()
             .padding(16.dp)
     ) {
+        ScanFlowProgress(currentStep = 2)
+        Spacer(Modifier.height(16.dp))
         Text("Проверьте граммовки", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(
             "КБЖУ указаны на 100 г готового продукта. Сырой и готовый вес связаны увариванием: " +
@@ -625,7 +666,7 @@ private fun ReviewGramsStage(state: ScannerUiState, viewModel: ScannerViewModel)
             itemsIndexed(state.estimated, key = { _, item -> item.id }) { index, item ->
                 Card(
                     Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = AppShapes.Small,
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Column(Modifier.padding(12.dp)) {
@@ -730,9 +771,11 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        Text("РС‚РѕРіРѕРІС‹Р№ РїРѕРґСЃС‡С‘С‚", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        ScanFlowProgress(currentStep = 3)
+        Spacer(Modifier.height(16.dp))
+        Text("\u0418\u0442\u043e\u0433\u043e\u0432\u044b\u0439 \u0440\u0430\u0441\u0447\u0451\u0442", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(
-            "РџСЂРѕРІРµСЂСЊС‚Рµ Р·РЅР°С‡РµРЅРёСЏ РїРµСЂРµРґ СЃРѕС…СЂР°РЅРµРЅРёРµРј",
+            "\u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u044f \u043f\u0435\u0440\u0435\u0434 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u0435\u043c",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -742,7 +785,7 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Text(
-                "Р РµР·СѓР»СЊС‚Р°С‚ AI РѕСЂРёРµРЅС‚РёСЂРѕРІРѕС‡РЅС‹Р№: РїСЂРѕРІРµСЂСЊС‚Рµ РїРѕСЂС†РёСЋ, СЃРѕСЃС‚Р°РІ Рё РљР‘Р–РЈ РїРµСЂРµРґ СЃРѕС…СЂР°РЅРµРЅРёРµРј.",
+                "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 AI \u043e\u0440\u0438\u0435\u043d\u0442\u0438\u0440\u043e\u0432\u043e\u0447\u043d\u044b\u0439: \u043f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u043f\u043e\u0440\u0446\u0438\u044e, \u0441\u043e\u0441\u0442\u0430\u0432 \u0438 \u041a\u0411\u0416\u0423 \u043f\u0435\u0440\u0435\u0434 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u0435\u043c.",
                 modifier = Modifier.padding(12.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -751,7 +794,7 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
         Spacer(Modifier.height(12.dp))
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(state.estimated, key = { _, item -> item.id }) { _, item ->
-                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+                Card(Modifier.fillMaxWidth(), shape = AppShapes.Small) {
                     Column(Modifier.padding(12.dp)) {
                         Text(item.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(4.dp))
@@ -760,20 +803,20 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                NumberFormat.compact(item.effectiveGrams) + " Рі" +
+                                NumberFormat.compact(item.effectiveGrams) + " \u0433" +
                                     if (item.notes.isBlank()) "" else " (" + item.notes + ")",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Text(
-                                item.totalCalories.toInt().toString() + " РєРєР°Р»",
+                                item.totalCalories.toInt().toString() + " \u043a\u043a\u0430\u043b",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
                         Text(
-                            "Р‘ " + item.totalProtein.toInt() + " вЂў Р– " + item.totalFat.toInt() +
-                                " вЂў РЈ " + item.totalCarbs.toInt(),
+                            "\u0411 " + item.totalProtein.toInt() + " \u2022 \u0416 " + item.totalFat.toInt() +
+                                " \u2022 \u0423 " + item.totalCarbs.toInt(),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -791,11 +834,11 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
                     style = MaterialTheme.typography.displaySmall,
                     fontWeight = FontWeight.Bold
                 )
-                Text("РєРєР°Р» вЂў " + state.mealType.label, style = MaterialTheme.typography.bodyLarge)
+                Text("\u043a\u043a\u0430\u043b \u2022 " + state.mealType.label, style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Р‘ " + state.totalProtein.toInt() + " Рі вЂў Р– " + state.totalFat.toInt() +
-                        " Рі вЂў РЈ " + state.totalCarbs.toInt() + " Рі",
+                    "\u0411 " + state.totalProtein.toInt() + " \u0433 \u2022 \u0416 " + state.totalFat.toInt() +
+                        " \u0433 \u2022 \u0423 " + state.totalCarbs.toInt() + " \u0433",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -806,7 +849,7 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
             enabled = state.estimated.isNotEmpty() && !state.saving,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(if (state.saving) "РЎРѕС…СЂР°РЅСЏРµРјвЂ¦" else "РЎРѕС…СЂР°РЅРёС‚СЊ РІ РґРЅРµРІРЅРёРє")
+            Text(if (state.saving) "\u0421\u043e\u0445\u0440\u0430\u043d\u044f\u0435\u043c\u2026" else "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0432 \u0434\u043d\u0435\u0432\u043d\u0438\u043a")
         }
     }
 }
