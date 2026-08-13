@@ -21,15 +21,18 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -116,18 +119,22 @@ fun DashboardScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { addFoodSheetVisible = true },
-                icon = { Icon(Icons.Default.Add, null) },
-                text = { Text("Добавить еду") }
-            )
+            if (state.meals.isNotEmpty()) {
+                ExtendedFloatingActionButton(
+                    onClick = { addFoodSheetVisible = true },
+                    icon = { Icon(Icons.Default.Add, null) },
+                    text = { Text("\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c") },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
         }
     ) { padding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 160.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 104.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
@@ -157,7 +164,7 @@ fun DashboardScreen(
                 )
             }
 
-            if (state.weightHistory.size >= 2) {
+            if (state.weightHistory.size >= 3) {
                 item { WeightChartCard(history = state.weightHistory) }
             }
 
@@ -168,11 +175,11 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Приёмы пищи", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    AssistChip(
-                        onClick = viewModel::requestRepeatPreviousDay,
-                        label = { Text("Повторить вчера") },
-                        leadingIcon = { Icon(Icons.Default.ContentCopy, null, Modifier.width(18.dp)) }
-                    )
+                    TextButton(onClick = viewModel::requestRepeatPreviousDay) {
+                        Icon(Icons.Default.ContentCopy, null, Modifier.width(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("\u041f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u044c \u0432\u0447\u0435\u0440\u0430")
+                    }
                 }
             }
 
@@ -377,8 +384,11 @@ private fun EmptyDiaryCard(
     onSearch: () -> Unit
 ) {
     Card(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        modifier = Modifier.fillMaxWidth(),
+        shape = AppShapes.Medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56f)
+        )
     ) {
         Column(
             Modifier
@@ -393,13 +403,16 @@ private fun EmptyDiaryCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onScan) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(onClick = onScan, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.PhotoCamera, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Сканировать")
                 }
-                OutlinedButton(onClick = onSearch) {
+                OutlinedButton(onClick = onSearch, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.Search, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Найти продукт")
@@ -416,8 +429,15 @@ private fun MealCard(
     onDeleteItem: (FoodItem) -> Unit,
     onEditItem: (FoodItem) -> Unit
 ) {
-    Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
-        Column(Modifier.padding(16.dp)) {
+    var actionsExpanded by remember { mutableStateOf(false) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = AppShapes.Medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f)
+        )
+    ) {
+        Column(Modifier.padding(12.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -431,11 +451,34 @@ private fun MealCard(
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
                     )
-                    IconButton(
-                        onClick = onDeleteMeal,
-                        modifier = Modifier.semantics { contentDescription = "Удалить приём пищи" }
-                    ) {
-                        Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                    Box {
+                        IconButton(
+                            onClick = { actionsExpanded = true },
+                            modifier = Modifier.semantics {
+                                contentDescription = "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u043f\u0440\u0438\u0451\u043c\u0430 \u043f\u0438\u0449\u0438"
+                            }
+                        ) {
+                            Icon(Icons.Default.MoreVert, contentDescription = null)
+                        }
+                        DropdownMenu(
+                            expanded = actionsExpanded,
+                            onDismissRequest = { actionsExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u043f\u0440\u0438\u0451\u043c \u043f\u0438\u0449\u0438") },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                },
+                                onClick = {
+                                    actionsExpanded = false
+                                    onDeleteMeal()
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -490,7 +533,12 @@ private fun SwipeToDeleteFoodItem(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 2.dp)
+                .padding(vertical = 4.dp)
+                .background(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+                    shape = AppShapes.Small
+                )
+                .padding(horizontal = 12.dp, vertical = 10.dp)
                 .semantics {
                     customActions = listOf(
                         CustomAccessibilityAction("Удалить ${item.name}") {
@@ -509,7 +557,14 @@ private fun SwipeToDeleteFoodItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            TextButton(onClick = onEdit) { Text("Изменить") }
+            IconButton(
+                onClick = onEdit,
+                modifier = Modifier.semantics {
+                    contentDescription = "\u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c ${item.name}"
+                }
+            ) {
+                Icon(Icons.Default.Edit, contentDescription = null)
+            }
         }
     }
 }
