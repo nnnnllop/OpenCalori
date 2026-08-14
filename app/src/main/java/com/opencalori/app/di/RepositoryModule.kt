@@ -7,9 +7,11 @@ import com.opencalori.app.data.image.ImageProcessor
 import com.opencalori.app.data.preferences.ApiKeyStore
 import com.opencalori.app.data.preferences.UserPreferencesStore
 import com.opencalori.app.data.repository.AiRepositoryImpl
+import com.opencalori.app.data.repository.DishRepositoryImpl
 import com.opencalori.app.data.repository.MealRepositoryImpl
 import com.opencalori.app.data.repository.ProductRepositoryImpl
 import com.opencalori.app.domain.repository.AiRepository
+import com.opencalori.app.domain.repository.DishRepository
 import com.opencalori.app.domain.repository.ApiConfigStore
 import com.opencalori.app.domain.repository.MealRepository
 import com.opencalori.app.domain.repository.ProductRepository
@@ -58,6 +60,9 @@ abstract class RepositoryModule {
     @Singleton
     abstract fun bindProductRepository(impl: ProductRepositoryImpl): ProductRepository
 
+    @Binds
+    @Singleton
+    abstract fun bindDishRepository(impl: DishRepositoryImpl): DishRepository
     @Binds
     @Singleton
     abstract fun bindAiRepository(impl: AiRepositoryImpl): AiRepository

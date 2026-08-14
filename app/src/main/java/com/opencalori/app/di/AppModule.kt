@@ -3,8 +3,10 @@ package com.opencalori.app.di
 import android.content.Context
 import androidx.room.Room
 import com.opencalori.app.data.local.AppDatabase
+import com.opencalori.app.data.local.DishDatabase
 import com.opencalori.app.data.local.ProductDatabase
 import com.opencalori.app.data.local.dao.CustomProductDao
+import com.opencalori.app.data.local.dao.DishDao
 import com.opencalori.app.data.local.dao.MealDao
 import com.opencalori.app.data.local.dao.ProductDao
 import com.opencalori.app.data.local.dao.WeightDao
@@ -46,5 +48,16 @@ object AppModule {
             .build()
 
     @Provides
+    @Singleton
+    fun provideDishDatabase(@ApplicationContext context: Context): DishDatabase =
+        Room.databaseBuilder(context, DishDatabase::class.java, DishDatabase.NAME)
+            .createFromAsset(DishDatabase.ASSET_PATH)
+            .fallbackToDestructiveMigration()
+            .build()
+
+    @Provides
     fun provideProductDao(db: ProductDatabase): ProductDao = db.productDao()
+
+    @Provides
+    fun provideDishDao(db: DishDatabase): DishDao = db.dishDao()
 }

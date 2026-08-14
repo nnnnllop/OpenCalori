@@ -39,7 +39,7 @@ class LocalNutritionResolver @Inject constructor(
     suspend fun resolve(name: String): Product? {
         val normalized = normalize(name)
         if (normalized.isBlank()) return null
-        val candidates = productRepository.search(name.trim()).first()
+        val candidates = productRepository.search(normalized).first()
         if (candidates.isEmpty()) return null
         candidates.firstOrNull { normalize(it.name) == normalized }?.let { return it }
         val nameTokens = normalized.split(' ').filter { it.length > 1 }.toSet()
@@ -56,13 +56,13 @@ class LocalNutritionResolver @Inject constructor(
 
     private fun similarityScore(queryTokens: Set<String>, candidateName: String): Int {
         val candidateTokens = candidateName.split(' ').filter { it.length > 1 }.toSet()
-        return queryTokens.sumOf { query ->
+        return queryTokens.map { query ->
             when {
                 query in candidateTokens -> 4
                 candidateTokens.any { it.startsWith(query) || query.startsWith(it) } -> 2
                 else -> 0
             }
-        }
+        }.sum()
     }
 
     private fun normalize(value: String): String = value

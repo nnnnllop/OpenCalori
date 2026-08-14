@@ -7,6 +7,7 @@ import com.opencalori.app.domain.model.FoodItem
 import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.domain.model.Product
 import com.opencalori.app.domain.model.ProductSource
+import com.opencalori.app.domain.repository.DishRepository
 import com.opencalori.app.domain.repository.MealRepository
 import com.opencalori.app.domain.repository.ProductRepository
 import com.opencalori.app.ui.navigation.Routes
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -38,6 +40,7 @@ data class FoodSearchUiState(
 @HiltViewModel
 class FoodSearchViewModel @Inject constructor(
     private val productRepository: ProductRepository,
+    private val dishRepository: DishRepository,
     private val mealRepository: MealRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -54,7 +57,11 @@ class FoodSearchViewModel @Inject constructor(
     val results: StateFlow<List<Product>> = query
         .debounce(220)
         .distinctUntilChanged()
-        .flatMapLatest { productRepository.search(it) }
+        .flatMapLatest { input ->
+            combine(productRepository.search(input), dishRepository.search(input)) { products, dishes ->
+                dishes.map { it.toProduct() } + products
+            }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {

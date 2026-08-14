@@ -1,41 +1,44 @@
 package com.opencalori.app.data.local
 
-/**
- * Builds SQLite FTS4 MATCH expressions for the product search.
- *
- * Two traps live here, both of which silently return zero rows instead of failing:
- *
- * 1. The quoted form `"молок"*` does NOT prefix-match in FTS4 - the star after a closing
- *    quote is ignored and the term is matched exactly. Only the bare `молок*` form works,
- *    so tokens are emitted unquoted and scrubbed of anything with syntactic meaning.
- * 2. The index must use the unicode61 tokenizer, otherwise Cyrillic is never case-folded.
- *
- * Kept as a pure function so both are covered by unit tests.
- */
+/** Builds safe SQLite FTS4 MATCH expressions for food search. */
 object FtsQuery {
+    private val separators = Regex("[^\\p{L}\\p{N}]+")
+    private val operators = setOf("and", "or", "not", "near")
 
-    /** Anything with a special meaning inside a MATCH expression. */
-    private val SPECIAL = Regex("[\"*():^\\-,.;!?/\\\\]")
+    fun build(input: String): String? = tokens(input)
+        ?.joinToString(" AND ") { it + "*" }
 
-    /** Bare words that FTS4 would read as operators. */
-    private val OPERATORS = setOf("and", "or", "not", "near")
+    fun buildExpanded(input: String): String? = tokens(input)
+        ?.joinToString(" AND ") { token ->
+            val stem = russianStem(token)
+            if (stem == token) token + "*" else "(" + token + "* OR " + stem + "*)"
+        }
 
-    /**
-     * Turns free user input into a prefix-matching AND query, e.g.
-     * `грудка кур` -> `грудка* AND кур*`.
-     *
-     * Returns null when nothing searchable is left, in which case callers should fall
-     * back to a plain LIKE query instead of running an invalid MATCH.
-     */
-    fun build(input: String): String? {
-        // Special characters become separators, so "кока-кола" turns into two tokens and
-        // still matches the way the tokenizer indexed it.
-        val tokens = SPECIAL.replace(input, " ")
-            .trim()
-            .split(Regex("\\s+"))
-            .filter { it.isNotBlank() && it.lowercase() !in OPERATORS }
-
-        if (tokens.isEmpty()) return null
-        return tokens.joinToString(" AND ") { it + "*" }
+    private fun tokens(input: String): List<String>? {
+        val result = input.trim()
+            .split(separators)
+            .filter { it.isNotBlank() && it.lowercase() !in operators }
+        return result.ifEmpty { null }
     }
+
+    private fun russianStem(token: String): String {
+        val lower = token.lowercase()
+        if (!lower.all(::isRussianLetter) || lower.length < 5) return token
+        val suffix = russianSuffixes.firstOrNull { lower.endsWith(it) && lower.length - it.length >= 3 }
+            ?: return token
+        return token.dropLast(suffix.length)
+    }
+
+    private fun isRussianLetter(char: Char): Boolean {
+        val code = char.code
+        return code in 0x0430..0x044F || code == 0x0451
+    }
+
+    private val russianSuffixes = listOf(
+        "\u0438\u044f\u043c\u0438", "\u044f\u043c\u0438", "\u0430\u043c\u0438", "\u043e\u0432\u044b\u043c", "\u0435\u0432\u0430\u043c",
+        "\u043e\u0433\u043e", "\u0435\u0433\u043e", "\u044b\u043c\u0438", "\u043e\u043c\u0443", "\u0435\u043c\u0443", "\u0430\u044f",
+        "\u0438\u044f", "\u0430\u043c", "\u044f\u043c", "\u0430\u0445", "\u044f\u0445", "\u043e\u043c", "\u0435\u043c",
+        "\u0438\u0432", "\u043e\u0432", "\u0435\u0439", "\u043e\u0439", "\u044b\u0435", "\u0438\u0435", "\u043e\u0435",
+        "\u044b", "\u0438", "\u0430", "\u044f", "\u0443", "\u044e", "\u0435", "\u043e"
+    )
 }

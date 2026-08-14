@@ -221,9 +221,9 @@ private fun ProductRow(product: Product, onClick: () -> Unit) {
                             modifier = Modifier.size(16.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        ProductSource.BUILT_IN -> Unit
+                        ProductSource.BUILT_IN, ProductSource.DISH -> Unit
                     }
-                    if (product.source != ProductSource.BUILT_IN) Spacer(Modifier.size(8.dp))
+                    if (product.source == ProductSource.CUSTOM || product.source == ProductSource.RECENT) Spacer(Modifier.size(8.dp))
                     Text(
                         product.name,
                         style = MaterialTheme.typography.titleSmall,
@@ -242,6 +242,13 @@ private fun ProductRow(product: Product, onClick: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
                 }
+            }
+            if (product.source == ProductSource.DISH) {
+                Text(
+                    "\u0411\u043b\u044e\u0434\u043e · \u043f\u043e\u0440\u0446\u0438\u044f " + product.suggestedGrams.toInt() + " \u0433",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("\u0411 " + NumberFormat.compact(product.proteinPer100g), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -271,7 +278,7 @@ private fun AddProductDialog(
     onDismiss: () -> Unit,
     onAdd: (grams: Float, mealType: MealType) -> Unit
 ) {
-    var grams by remember { mutableStateOf("100") }
+    var grams by remember(product.key) { mutableStateOf(product.suggestedGrams.toInt().toString()) }
     var mealType by remember { mutableStateOf(suggestedMealType()) }
     val gramsValue = NumberFormat.parse(grams) ?: 0f
 

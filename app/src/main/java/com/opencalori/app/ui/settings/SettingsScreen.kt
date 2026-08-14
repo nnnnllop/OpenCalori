@@ -285,6 +285,13 @@ fun SettingsScreen(
             // ---- Backup ----
             SectionTitle("Данные")
             Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 к\u0430\u0442\u0430\u043b\u043e\u0433", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text("v2026.08.v1 · 5 431 п\u0440\u043e\u0434\u0443\u043a\u0442 · 1 125 б\u043b\u044e\u0434", style = MaterialTheme.typography.bodyMedium)
+                    Text("\u041f\u0440\u043e\u0434\u0443\u043a\u0442\u044b: USDA FNDDS (CC0). Б\u043b\u044e\u0434\u0430: п\u0440\u043e\u0432\u0435\u0440\u0435\u043d\u043d\u044b\u0439 л\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 с\u043f\u0438\u0441\u043e\u043a.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         "Дневник хранится только на этом устройстве. Сделайте резервную копию " +

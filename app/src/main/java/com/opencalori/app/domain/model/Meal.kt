@@ -42,7 +42,7 @@ data class WeightEntry(
 )
 
 /** Where a searchable product came from. */
-enum class ProductSource { BUILT_IN, CUSTOM, RECENT }
+enum class ProductSource { BUILT_IN, CUSTOM, RECENT, DISH }
 
 /** Product from the offline local database, the user's own list, or recent history. */
 data class Product(
@@ -52,7 +52,8 @@ data class Product(
     val proteinPer100g: Float,
     val fatPer100g: Float,
     val carbsPer100g: Float,
-    val source: ProductSource = ProductSource.BUILT_IN
+    val source: ProductSource = ProductSource.BUILT_IN,
+    val suggestedGrams: Float = 100f
 ) {
     /** Stable key for lazy lists - ids may collide across sources. */
     val key: String get() = source.name + "-" + id + "-" + name

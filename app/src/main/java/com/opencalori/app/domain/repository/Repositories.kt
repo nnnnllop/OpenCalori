@@ -1,6 +1,7 @@
 package com.opencalori.app.domain.repository
 
 import com.opencalori.app.domain.model.ApiConfig
+import com.opencalori.app.domain.model.Dish
 import com.opencalori.app.domain.model.NutritionSourceMode
 import com.opencalori.app.domain.model.ApiValidationResult
 import com.opencalori.app.domain.model.EstimatedIngredient
@@ -59,6 +60,12 @@ interface ProductRepository {
 }
 
 /** BYOK vision pipeline. */
+/** Curated local meals with aliases, ingredients, and a default serving size. */
+interface DishRepository {
+    fun search(query: String): Flow<List<Dish>>
+    suspend fun count(): Int
+}
+
 interface AiRepository {
     suspend fun validateApi(): ApiValidationResult
 

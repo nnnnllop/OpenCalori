@@ -6,6 +6,7 @@ import com.opencalori.app.domain.model.FoodItem
 import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.domain.model.Product
 import com.opencalori.app.domain.model.ProductSource
+import com.opencalori.app.testing.FakeDishRepository
 import com.opencalori.app.testing.FakeMealRepository
 import com.opencalori.app.testing.FakeProductRepository
 import com.opencalori.app.testing.MainDispatcherRule
@@ -27,10 +28,12 @@ class FoodSearchViewModelTest {
     private val targetDay = 20_311L
 
     private val products = FakeProductRepository()
+    private val dishes = FakeDishRepository()
     private val meals = FakeMealRepository()
 
     private fun viewModel() = FoodSearchViewModel(
         productRepository = products,
+        dishRepository = dishes,
         mealRepository = meals,
         savedStateHandle = SavedStateHandle(mapOf("date" to targetDay))
     )

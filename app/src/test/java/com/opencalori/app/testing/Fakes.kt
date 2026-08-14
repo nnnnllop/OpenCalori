@@ -2,13 +2,16 @@ package com.opencalori.app.testing
 
 import com.opencalori.app.domain.model.ApiConfig
 import com.opencalori.app.domain.model.ApiValidationResult
+import com.opencalori.app.domain.model.Dish
 import com.opencalori.app.domain.model.EstimatedIngredient
+import com.opencalori.app.domain.model.NutritionSourceMode
 import com.opencalori.app.domain.model.Product
 import com.opencalori.app.domain.model.ProductSource
 import com.opencalori.app.domain.model.RecognizedDish
 import com.opencalori.app.domain.model.UserProfile
 import com.opencalori.app.domain.model.ValidationStatus
 import com.opencalori.app.domain.repository.AiRepository
+import com.opencalori.app.domain.repository.DishRepository
 import com.opencalori.app.domain.repository.ApiConfigStore
 import com.opencalori.app.domain.repository.ProductRepository
 import com.opencalori.app.domain.repository.UserPreferences
@@ -32,6 +35,9 @@ class FakeUserPreferences(initial: UserProfile = UserProfile(onboardingCompleted
     override suspend fun setAiEnabled(enabled: Boolean) {
         state.value = state.value.copy(aiEnabled = enabled)
     }
+    override suspend fun setNutritionSourceMode(mode: NutritionSourceMode) {
+        state.value = state.value.copy(nutritionSourceMode = mode)
+    }
 
     override suspend fun setAiSkipListReview(skip: Boolean) {
         state.value = state.value.copy(aiSkipListReview = skip)
@@ -46,6 +52,18 @@ class FakeUserPreferences(initial: UserProfile = UserProfile(onboardingCompleted
     }
 }
 
+class FakeDishRepository : DishRepository {
+    val catalogue = MutableStateFlow<List<Dish>>(emptyList())
+    override fun search(query: String): Flow<List<Dish>> {
+        val normalized = query.trim().lowercase()
+        return catalogue.map { dishes ->
+            if (normalized.isBlank()) emptyList() else dishes.filter { dish ->
+                dish.name.lowercase().contains(normalized) || dish.aliases.any { it.lowercase().contains(normalized) }
+            }
+        }
+    }
+    override suspend fun count(): Int = catalogue.value.size
+}
 class FakeApiConfigStore(initial: ApiConfig = ApiConfig()) : ApiConfigStore {
 
     val state = MutableStateFlow(initial)

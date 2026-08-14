@@ -27,7 +27,7 @@ class ProductRepositoryImpl @Inject constructor(
         val trimmed = query.trim()
         if (trimmed.isBlank()) return flowOf(emptyList())
 
-        val builtIn = when (val fts = FtsQuery.build(trimmed)) {
+        val builtIn = when (val fts = FtsQuery.buildExpanded(trimmed)) {
             null -> productDao.searchLike(trimmed)
             // A malformed MATCH throws at collection time; degrade to LIKE instead of crashing.
             else -> productDao.searchFts(fts).catch { emitAll(productDao.searchLike(trimmed)) }

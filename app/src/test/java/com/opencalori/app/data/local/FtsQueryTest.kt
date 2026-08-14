@@ -76,4 +76,12 @@ class FtsQueryTest {
     fun `case is left to the tokenizer to fold`() {
         assertEquals("Гречка*", FtsQuery.build("Гречка"))
     }
+    @Test
+    fun `expanded query retains inflection and adds a safe Russian stem`() {
+        assertEquals("(\u043a\u0443\u0440\u0438\u0446\u0435\u0439* OR \u043a\u0443\u0440\u0438\u0446*)", FtsQuery.buildExpanded("\u043a\u0443\u0440\u0438\u0446\u0435\u0439"))
+    }
+    @Test
+    fun `expanded query leaves short Russian words unchanged`() {
+        assertEquals("\u0441\u0443\u0448\u0438*", FtsQuery.buildExpanded("\u0441\u0443\u0448\u0438"))
+    }
 }

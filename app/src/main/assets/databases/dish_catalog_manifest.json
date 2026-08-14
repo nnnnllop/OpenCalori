@@ -1,0 +1,10 @@
+{
+  "catalog_version": "2026.08.v1",
+  "source": "OpenCalori curated common-dish catalogue",
+  "method": "recipe-family serving profiles with deterministic local macro estimates",
+  "dishes": 1125,
+  "minimum_dishes": 1000,
+  "aliases": 2290,
+  "identity_hash": "c54fee39f9f24ee1b5ae03371c252866",
+  "sha256": "ffd173a0b5028b34a82d85636a6d744b3f164c046b64ce55ea3f20d9e7378b08"
+}
