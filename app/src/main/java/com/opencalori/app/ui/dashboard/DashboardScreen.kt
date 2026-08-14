@@ -67,6 +67,7 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.opencalori.app.domain.model.FoodItem
@@ -403,20 +404,21 @@ private fun EmptyDiaryCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Button(
+                onClick = onScan,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Button(onClick = onScan, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.PhotoCamera, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Сканировать")
-                }
-                OutlinedButton(onClick = onSearch, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Search, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Найти продукт")
-                }
+                Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("\u0421\u043a\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0435\u0434\u0443", maxLines = 1)
+            }
+            OutlinedButton(
+                onClick = onSearch,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Search, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("\u041d\u0430\u0439\u0442\u0438 \u043f\u0440\u043e\u0434\u0443\u043a\u0442 \u0432\u0440\u0443\u0447\u043d\u0443\u044e", maxLines = 1)
             }
         }
     }
@@ -443,13 +445,22 @@ private fun MealCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(meal.mealType.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    text = meal.mealType.label,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.width(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         meal.totalCalories.toInt().toString() + " ккал",
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
                     )
                     Box {
                         IconButton(
@@ -511,6 +522,7 @@ private fun SwipeToDeleteFoodItem(
             }
         }
     )
+    val deleteTargetActive = dismissState.targetValue == SwipeToDismissBoxValue.EndToStart
     SwipeToDismissBox(
         state = dismissState,
         enableDismissFromStartToEnd = false,
@@ -518,14 +530,18 @@ private fun SwipeToDeleteFoodItem(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .background(
+                        if (deleteTargetActive) MaterialTheme.colorScheme.errorContainer
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
+                    )
                     .padding(horizontal = 20.dp),
                 contentAlignment = Alignment.CenterEnd
             ) {
                 Icon(
                     Icons.Default.Delete,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onErrorContainer
+                    tint = if (deleteTargetActive) MaterialTheme.colorScheme.onErrorContainer
+                    else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -535,7 +551,7 @@ private fun SwipeToDeleteFoodItem(
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
                 .background(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+                    color = MaterialTheme.colorScheme.surface,
                     shape = AppShapes.Small
                 )
                 .padding(horizontal = 12.dp, vertical = 10.dp)
