@@ -12,6 +12,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.opencalori.app.domain.model.ActivityLevel
 import com.opencalori.app.domain.model.Gender
 import com.opencalori.app.domain.model.Goal
+import com.opencalori.app.domain.model.NutritionSourceMode
 import com.opencalori.app.domain.model.UserProfile
 import com.opencalori.app.domain.repository.UserPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -41,6 +42,7 @@ class UserPreferencesStore @Inject constructor(
         val AI_SKIP_LIST = booleanPreferencesKey("ai_skip_list_review")
         val AI_SKIP_GRAMS = booleanPreferencesKey("ai_skip_grams_review")
         val AI_SKIP_FINAL = booleanPreferencesKey("ai_skip_final_review")
+        val NUTRITION_SOURCE_MODE = stringPreferencesKey("nutrition_source_mode")
     }
 
     override val profile: Flow<UserProfile> = context.dataStore.data.map { prefs ->
@@ -56,7 +58,8 @@ class UserPreferencesStore @Inject constructor(
             aiEnabled = prefs[Keys.AI_ENABLED] ?: true,
             aiSkipListReview = prefs[Keys.AI_SKIP_LIST] ?: false,
             aiSkipGramsReview = prefs[Keys.AI_SKIP_GRAMS] ?: false,
-            aiSkipFinalReview = prefs[Keys.AI_SKIP_FINAL] ?: false
+            aiSkipFinalReview = prefs[Keys.AI_SKIP_FINAL] ?: false,
+            nutritionSourceMode = NutritionSourceMode.fromStorage(prefs[Keys.NUTRITION_SOURCE_MODE])
         )
     }
 
@@ -73,6 +76,7 @@ class UserPreferencesStore @Inject constructor(
             prefs[Keys.AI_SKIP_LIST] = profile.aiSkipListReview
             prefs[Keys.AI_SKIP_GRAMS] = profile.aiSkipGramsReview
             prefs[Keys.AI_SKIP_FINAL] = profile.aiSkipFinalReview
+            prefs[Keys.NUTRITION_SOURCE_MODE] = profile.nutritionSourceMode.name
         }
     }
 
@@ -95,5 +99,8 @@ class UserPreferencesStore @Inject constructor(
 
     override suspend fun setAiSkipFinalReview(skip: Boolean) {
         context.dataStore.edit { it[Keys.AI_SKIP_FINAL] = skip }
+    }
+    override suspend fun setNutritionSourceMode(mode: NutritionSourceMode) {
+        context.dataStore.edit { it[Keys.NUTRITION_SOURCE_MODE] = mode.name }
     }
 }

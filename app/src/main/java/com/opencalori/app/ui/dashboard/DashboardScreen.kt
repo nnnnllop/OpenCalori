@@ -119,23 +119,12 @@ fun DashboardScreen(
                 }
             )
         },
-        floatingActionButton = {
-            if (state.meals.isNotEmpty()) {
-                ExtendedFloatingActionButton(
-                    onClick = { addFoodSheetVisible = true },
-                    icon = { Icon(Icons.Default.Add, null) },
-                    text = { Text("\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c") },
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-        }
     ) { padding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 104.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
@@ -176,11 +165,6 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Приёмы пищи", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    TextButton(onClick = viewModel::requestRepeatPreviousDay) {
-                        Icon(Icons.Default.ContentCopy, null, Modifier.width(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("\u041f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u044c \u0432\u0447\u0435\u0440\u0430")
-                    }
                 }
             }
 
@@ -205,6 +189,16 @@ fun DashboardScreen(
                         onDeleteItem = { item -> viewModel.deleteFoodItem(meal, item) },
                         onEditItem = { item -> editingItem = item }
                     )
+                }
+                item {
+                    Button(
+                        onClick = { addFoodSheetVisible = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Добавить еду")
+                    }
                 }
             }
         }
@@ -250,29 +244,7 @@ fun DashboardScreen(
             }
         )
     }
-    state.pendingRepeat?.let { preview ->
-        AlertDialog(
-            onDismissRequest = viewModel::dismissRepeatPreviousDay,
-            title = { Text("Заменить дневник?") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "Будет скопировано ${preview.itemCount} продуктов из ${preview.mealCount} приёмов пищи за ${preview.sourceDate}.",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        "Текущие записи за выбранный день будут заменены. Сразу после этого действие можно отменить.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = { TextButton(onClick = viewModel::confirmRepeatPreviousDay) { Text("Заменить") } },
-            dismissButton = { TextButton(onClick = viewModel::dismissRepeatPreviousDay) { Text("Отмена") } }
-        )
-    }
 }
-
 @Composable
 private fun AddFoodBottomSheet(
     scannerReady: Boolean,

@@ -83,9 +83,18 @@ class ProductsAssetDatabaseTest {
     @Test
     fun `the catalogue is worth shipping`() {
         val count = scalar("SELECT COUNT(*) FROM products")?.toInt() ?: 0
-        assertTrue("Only $count products bundled", count >= 300)
+        assertTrue("Only $count products bundled; the offline catalogue must contain at least 5,000 validated entries", count >= 5_000)
     }
 
+    @Test
+    fun `catalog manifest records its official source and current size`() {
+        val manifest = File("src/main/assets/databases/catalog_manifest.json")
+        assertTrue("Missing catalogue provenance manifest", manifest.exists())
+        val text = manifest.readText()
+        assertTrue(text.contains("USDA FoodData Central"))
+        assertTrue(text.contains("FNDDS 2021-2023"))
+        assertTrue(text.contains("\"products\":"))
+    }
     @Test
     fun `every product has plausible macros`() {
         val bad = scalar(

@@ -5,8 +5,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.opencalori.app.data.image.ImageProcessor
+import com.opencalori.app.data.repository.LocalNutritionResolver
 import com.opencalori.app.domain.model.EstimatedIngredient
 import com.opencalori.app.domain.model.MealType
+import com.opencalori.app.domain.model.NutritionSourceMode
 import com.opencalori.app.domain.model.RecognizedDish
 import com.opencalori.app.domain.model.RecognizedIngredient
 import com.opencalori.app.domain.model.UserProfile
@@ -105,6 +107,7 @@ class ScannerViewModel @Inject constructor(
     private val imageProcessor: ImageProcessor,
     private val userPrefs: UserPreferences,
     private val apiConfigStore: ApiConfigStore,
+    private val localNutritionResolver: LocalNutritionResolver,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -118,7 +121,8 @@ class ScannerViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            if (!apiConfigStore.current().isConfigured) {
+            val mode = profile().nutritionSourceMode
+            if (mode.usesAi && !apiConfigStore.current().isConfigured) {
                 _uiState.update { it.copy(stage = ScannerStage.NOT_CONFIGURED) }
             }
         }
@@ -163,6 +167,15 @@ class ScannerViewModel @Inject constructor(
     }
 
     private suspend fun runStage1(base64: String) {
+        if (!profile().nutritionSourceMode.usesAi) {
+            _uiState.update {
+                it.copy(
+                    stage = ScannerStage.ERROR,
+                    error = "\u0412 л\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u043c р\u0435\u0436\u0438\u043c\u0435 ф\u043e\u0442\u043e н\u0435 о\u0442\u043f\u0440\u0430\u0432\u043b\u044f\u0435\u0442\u0441\u044f в И\u0418. Н\u0430\u0439\u0434\u0438\u0442\u0435 п\u0440\u043e\u0434\u0443\u043a\u0442 вр\u0443\u0447\u043d\u0443\u044e ил\u0438 в\u044b\u0431\u0435\u0440\u0438\u0442\u0435 к\u043e\u043c\u0431\u0438\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0439 р\u0435\u0436\u0438\u043c."
+                )
+            }
+            return
+        }
         aiRepository.recognizeDish(base64)
             .onSuccess { dish ->
                 if (dish.ingredients.isEmpty()) {
@@ -237,21 +250,36 @@ class ScannerViewModel @Inject constructor(
 
     private suspend fun runStage2(photo: String, dishName: String, items: List<String>) {
         _uiState.update { it.copy(stage = ScannerStage.ANALYZING_2, error = null) }
-
-        aiRepository.estimateNutrition(photo, dishName, items)
-            .onSuccess { estimated ->
-                _uiState.update { it.copy(estimated = estimated) }
-                val profile = profile()
-                when {
-                    // Both confirmations waived: straight into the diary.
-                    profile.aiSkipGramsReview && profile.aiSkipFinalReview -> saveMeal()
-                    profile.aiSkipGramsReview -> _uiState.update { it.copy(stage = ScannerStage.REVIEW_FINAL) }
-                    else -> _uiState.update { it.copy(stage = ScannerStage.REVIEW_GRAMS) }
+        val aiEstimate = aiRepository.estimateNutrition(photo, dishName, items)
+        if (aiEstimate.isFailure) {
+            fail(aiEstimate.exceptionOrNull() ?: IllegalStateException(), "\\u041e\\u0448\\u0438\\u0431\\u043a\\u0430 \u043e\\u0446\\u0435\\u043d\\u043a\\u0438 \u041a\\u0411\\u0416\\u0423")
+            return
+        }
+        val mode = profile().nutritionSourceMode
+        val estimated = aiEstimate.getOrThrow()
+        val finalEstimate = if (mode.usesLocalCatalogue) {
+            val local = localNutritionResolver.replaceMacros(estimated)
+            if (!local.isComplete) {
+                _uiState.update {
+                    it.copy(
+                        stage = ScannerStage.ERROR,
+                        error = "\\u041d\\u0435 \u043d\\u0430\\u0439\\u0434\\u0435\\u043d\\u044b \u043f\\u0440\\u043e\\u0434\\u0443\\u043a\\u0442\\u044b \u0432 \u043b\\u043e\\u043a\\u0430\\u043b\\u044c\\u043d\\u043e\\u0439 \u0431\\u0430\\u0437\\u0435: " + local.unmatchedNames.joinToString()
+                    )
                 }
+                return
             }
-            .onFailure { throwable -> fail(throwable, "Ошибка оценки КБЖУ") }
+            local.resolved
+        } else {
+            estimated
+        }
+        _uiState.update { it.copy(estimated = finalEstimate) }
+        val profile = profile()
+        when {
+            profile.aiSkipGramsReview && profile.aiSkipFinalReview -> saveMeal()
+            profile.aiSkipGramsReview -> _uiState.update { it.copy(stage = ScannerStage.REVIEW_FINAL) }
+            else -> _uiState.update { it.copy(stage = ScannerStage.REVIEW_GRAMS) }
+        }
     }
-
     // ---- Grams editing ----
 
     fun updateEstimated(index: Int, item: EstimatedIngredient) {

@@ -1,6 +1,7 @@
 package com.opencalori.app.domain.repository
 
 import com.opencalori.app.domain.model.ApiConfig
+import com.opencalori.app.domain.model.NutritionSourceMode
 import com.opencalori.app.domain.model.ApiValidationResult
 import com.opencalori.app.domain.model.EstimatedIngredient
 import com.opencalori.app.domain.model.FoodItem
@@ -79,6 +80,7 @@ interface UserPreferences {
     suspend fun setAiSkipListReview(skip: Boolean)
     suspend fun setAiSkipGramsReview(skip: Boolean)
     suspend fun setAiSkipFinalReview(skip: Boolean)
+    suspend fun setNutritionSourceMode(mode: NutritionSourceMode)
 }
 
 /** Encrypted BYOK credential storage. */

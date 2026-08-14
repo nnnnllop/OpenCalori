@@ -10,6 +10,7 @@ import com.opencalori.app.data.backup.ImportSummary
 import com.opencalori.app.data.preferences.ApiKeyStore
 import com.opencalori.app.domain.model.ApiConfig
 import com.opencalori.app.domain.model.ApiValidationResult
+import com.opencalori.app.domain.model.NutritionSourceMode
 import com.opencalori.app.domain.model.UserProfile
 import com.opencalori.app.domain.model.ValidationStatus
 import com.opencalori.app.domain.repository.AiRepository
@@ -129,10 +130,17 @@ class SettingsViewModel @Inject constructor(
     }
 
     // ---- AI scenario ----
-    fun setAiEnabled(enabled: Boolean) = viewModelScope.launch { userPrefs.setAiEnabled(enabled) }
+    fun setAiEnabled(enabled: Boolean) = viewModelScope.launch {
+        userPrefs.setAiEnabled(enabled)
+        if (!enabled) userPrefs.setNutritionSourceMode(NutritionSourceMode.LOCAL_DATABASE)
+    }
     fun setAiSkipListReview(skip: Boolean) = viewModelScope.launch { userPrefs.setAiSkipListReview(skip) }
     fun setAiSkipGramsReview(skip: Boolean) = viewModelScope.launch { userPrefs.setAiSkipGramsReview(skip) }
     fun setAiSkipFinalReview(skip: Boolean) = viewModelScope.launch { userPrefs.setAiSkipFinalReview(skip) }
+    fun setNutritionSourceMode(mode: NutritionSourceMode) = viewModelScope.launch {
+        userPrefs.setNutritionSourceMode(mode)
+        userPrefs.setAiEnabled(mode.usesAi)
+    }
 
     // ---- Backup ----
     fun exportTo(uri: Uri) {

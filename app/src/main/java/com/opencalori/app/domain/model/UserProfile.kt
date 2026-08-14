@@ -31,7 +31,8 @@ data class UserProfile(
     val aiEnabled: Boolean = true,
     val aiSkipListReview: Boolean = false,      // skip "edit recognized list" step
     val aiSkipGramsReview: Boolean = false,     // skip "edit grams" step
-    val aiSkipFinalReview: Boolean = false      // skip "final confirmation" step
+    val aiSkipFinalReview: Boolean = false,     // skip "final confirmation" step
+    val nutritionSourceMode: NutritionSourceMode = NutritionSourceMode.AI_ONLY
 )
 
 data class CalorieGoal(

@@ -1,9 +1,12 @@
 package com.opencalori.app.ui.scanner
 
 import androidx.lifecycle.SavedStateHandle
+import com.opencalori.app.data.repository.LocalNutritionResolver
 import com.opencalori.app.domain.model.ApiConfig
 import com.opencalori.app.domain.model.EstimatedIngredient
 import com.opencalori.app.domain.model.MealType
+import com.opencalori.app.domain.model.NutritionSourceMode
+import com.opencalori.app.domain.model.Product
 import com.opencalori.app.domain.model.RecognizedDish
 import com.opencalori.app.domain.model.RecognizedIngredient
 import com.opencalori.app.domain.model.UserProfile
@@ -11,6 +14,7 @@ import com.opencalori.app.testing.FakeAiRepository
 import com.opencalori.app.testing.FakeApiConfigStore
 import com.opencalori.app.testing.FakeImageProcessor
 import com.opencalori.app.testing.FakeMealRepository
+import com.opencalori.app.testing.FakeProductRepository
 import com.opencalori.app.testing.FakeUserPreferences
 import com.opencalori.app.testing.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -37,12 +41,15 @@ class ScannerViewModelTest {
     private val prefs = FakeUserPreferences(UserProfile(onboardingCompleted = true))
     private val apiConfig = FakeApiConfigStore(ApiConfig(apiKey = "sk-test"))
 
+    private val products = FakeProductRepository()
+    private val localNutrition = LocalNutritionResolver(products)
     private fun viewModel() = ScannerViewModel(
         aiRepository = ai,
         mealRepository = meals,
         imageProcessor = images,
         userPrefs = prefs,
         apiConfigStore = apiConfig,
+        localNutritionResolver = localNutrition,
         savedStateHandle = SavedStateHandle(mapOf("date" to targetDay))
     )
 
@@ -226,6 +233,29 @@ class ScannerViewModelTest {
         assertEquals(ScannerStage.SAVED, vm.uiState.value.stage)
     }
 
+    @Test
+    fun `hybrid mode keeps AI weights but replaces every macro with local catalogue values`() = runTest {
+        prefs.state.value = prefs.state.value.copy(nutritionSourceMode = NutritionSourceMode.HYBRID)
+        products.catalogue.value = listOf(
+            Product(1, "\u0413\u0440\u0435\u0447\u043a\u0430", 113f, 3.6f, 1.1f, 21.3f),
+            Product(2, "\u041a\u0443\u0440\u0438\u0446\u0430", 170f, 30f, 4f, 0f)
+        )
+        ai.dishResult = Result.success(dish())
+        ai.nutritionResult = Result.success(estimated())
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.onPhotoTaken(photo())
+        advanceUntilIdle()
+        vm.confirmIngredientsAndEstimate()
+        advanceUntilIdle()
+
+        assertEquals(ScannerStage.REVIEW_GRAMS, vm.uiState.value.stage)
+        assertEquals(113f, vm.uiState.value.estimated[0].caloriesPer100g)
+        assertEquals(21.3f, vm.uiState.value.estimated[0].carbsPer100g)
+        assertEquals(170f, vm.uiState.value.estimated[1].caloriesPer100g)
+        assertEquals(200f, vm.uiState.value.estimated[0].cookedGrams)
+        assertEquals(120f, vm.uiState.value.estimated[1].cookedGrams)
+    }
     @Test
     fun `the meal is written to the day the diary was showing`() = runTest {
         ai.dishResult = Result.success(dish())

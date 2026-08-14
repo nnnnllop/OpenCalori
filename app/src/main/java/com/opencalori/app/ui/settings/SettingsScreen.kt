@@ -60,6 +60,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.opencalori.app.BuildConfig
 import com.opencalori.app.data.backup.ImportMode
 import com.opencalori.app.domain.model.ApiValidationResult
+import com.opencalori.app.domain.model.NutritionSourceMode
 import com.opencalori.app.domain.model.ValidationStatus
 import com.opencalori.app.ui.theme.AppShapes
 import com.opencalori.app.ui.util.NumberFormat
@@ -78,6 +79,7 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var keyVisible by remember { mutableStateOf(false) }
     var analysisOptionsExpanded by remember { mutableStateOf(false) }
+    var page by remember { mutableStateOf(SettingsPage.ROOT) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -102,9 +104,11 @@ fun SettingsScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Настройки") },
+                title = { Text(page.title) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        if (page == SettingsPage.ROOT) onBack() else page = SettingsPage.ROOT
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад")
                     }
                 }
@@ -119,6 +123,10 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (page == SettingsPage.ROOT) {
+                SettingsMenuPage(onSelect = { page = it })
+            }
+            if (page == SettingsPage.PROFILE) {
             // ---- Profile ----
             SectionTitle("Профиль")
             Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
@@ -137,6 +145,8 @@ fun SettingsScreen(
                 }
             }
 
+            }
+            if (page == SettingsPage.AI) {
             // ---- AI ----
             SectionTitle("Искусственный интеллект")
             Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
@@ -162,6 +172,11 @@ fun SettingsScreen(
                 }
             }
 
+            SectionTitle("\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a К\u0411\u0416\u0423", small = true)
+            NutritionSourceModeCard(
+                mode = profile?.nutritionSourceMode ?: NutritionSourceMode.AI_ONLY,
+                onModeSelected = viewModel::setNutritionSourceMode
+            )
             if (profile?.aiEnabled == true) {
                 SectionTitle("\u041a\u043e\u043d\u0442\u0440\u043e\u043b\u044c AI", small = true)
                 Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
@@ -265,6 +280,8 @@ fun SettingsScreen(
                 }
             }
 
+            }
+            if (page == SettingsPage.DATA) {
             // ---- Backup ----
             SectionTitle("Данные")
             Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
@@ -337,8 +354,10 @@ fun SettingsScreen(
                 }
             }
 
+            }
+            if (page == SettingsPage.SUPPORT) {
             // ---- Donate ----
-            SectionTitle("Поддержать проект")
+            SectionTitle("\u0411\u043b\u0430\u0433\u043e\u0434\u0430\u0440\u043d\u043e\u0441\u0442\u044c")
             Card(
                 Modifier.fillMaxWidth(),
                 shape = AppShapes.Medium,
@@ -351,15 +370,15 @@ fun SettingsScreen(
                         Text("OpenCalori — бесплатный опенсорсный проект", fontWeight = FontWeight.Bold)
                     }
                     Text(
-                        "Без рекламы, подписок и трекеров. Если приложение полезно, поддержите автора.",
+                        "\u0411\u0435\u0437 р\u0435\u043a\u043b\u0430\u043c\u044b, п\u043e\u0434\u043f\u0438\u0441\u043e\u043a и т\u0440\u0435\u043a\u0435\u0440\u043e\u0432. Е\u0441\u043b\u0438 п\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435 п\u043e\u043b\u0435\u0437\u043d\u043e, п\u043e\u0434\u043f\u0438\u0448\u0438\u0442\u0435\u0441\u044c н\u0430 Telegram-к\u0430\u043d\u0430\u043b а\u0432\u0442\u043e\u0440\u0430.",
                         style = MaterialTheme.typography.bodySmall
                     )
                     TextButton(
                         onClick = {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SPONSORS_URL)))
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TELEGRAM_URL)))
                         }
                     ) {
-                        Text("Поддержать на GitHub Sponsors")
+                        Text("\u041f\u043e\u0434\u043f\u0438\u0441\u0430\u0442\u044c\u0441\u044f в Telegram")
                     }
                     TextButton(
                         onClick = {
@@ -380,11 +399,58 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(16.dp))
+            }
         }
     }
 }
 
-private const val SPONSORS_URL = "https://github.com/sponsors/nnnnllop"
+private enum class SettingsPage(val title: String) {
+    ROOT("\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438"),
+    PROFILE("\u041f\u0440\u043e\u0444\u0438\u043b\u044c"),
+    AI("\u0418\u0418 \u0438 \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u0432\u0430\u043d\u0438\u0435"),
+    DATA("\u0414\u0430\u043d\u043d\u044b\u0435"),
+    SUPPORT("\u041f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430")
+}
+
+@Composable
+private fun SettingsMenuPage(onSelect: (SettingsPage) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SettingsDestinationCard(
+            title = "\u041f\u0440\u043e\u0444\u0438\u043b\u044c",
+            subtitle = "\u0426\u0435\u043b\u044c, \u0432\u0435\u0441 \u0438 \u043f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u044b \u0440\u0430\u0441\u0447\u0451\u0442\u0430",
+            onClick = { onSelect(SettingsPage.PROFILE) }
+        )
+        SettingsDestinationCard(
+            title = "\u0418\u0418 \u0438 \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u0432\u0430\u043d\u0438\u0435",
+            subtitle = "\u0424\u043e\u0442\u043e\u0441\u043a\u0430\u043d\u0435\u0440, \u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a \u041a\u0411\u0416\u0423 \u0438 \u043a\u043b\u044e\u0447 API",
+            onClick = { onSelect(SettingsPage.AI) }
+        )
+        SettingsDestinationCard(
+            title = "\u0414\u0430\u043d\u043d\u044b\u0435",
+            subtitle = "\u042d\u043a\u0441\u043f\u043e\u0440\u0442, \u0438\u043c\u043f\u043e\u0440\u0442 \u0438 \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435",
+            onClick = { onSelect(SettingsPage.DATA) }
+        )
+        SettingsDestinationCard(
+            title = "\u041f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430 \u0438 \u043e \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0438",
+            subtitle = "Telegram-\u043a\u0430\u043d\u0430\u043b, \u0438\u0441\u0445\u043e\u0434\u043d\u044b\u0439 \u043a\u043e\u0434 \u0438 \u0432\u0435\u0440\u0441\u0438\u044f",
+            onClick = { onSelect(SettingsPage.SUPPORT) }
+        )
+    }
+}
+
+@Composable
+private fun SettingsDestinationCard(title: String, subtitle: String, onClick: () -> Unit) {
+    Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
+        TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+private const val TELEGRAM_URL = "https://t.me/NineKoder"
 private const val REPO_URL = "https://github.com/nnnnllop/OpenCalori"
 
 @Composable
@@ -413,6 +479,39 @@ private fun ScenarioToggle(
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun NutritionSourceModeCard(
+    mode: NutritionSourceMode,
+    onModeSelected: (NutritionSourceMode) -> Unit
+) {
+    Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("\u041a\u0430\u043a с\u0447\u0438\u0442\u0430\u0442\u044c К\u0411\u0416\u0423", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                "\u0418\u0418 о\u0446\u0435\u043d\u0438\u0432\u0430\u0435\u0442 б\u043b\u044e\u0434\u043e ц\u0435\u043b\u0438\u043a\u043e\u043c; л\u043e\u043a\u0430\u043b\u044c\u043d\u0430\u044f б\u0430\u0437\u0430 р\u0430\u0431\u043e\u0442\u0430\u0435\u0442 б\u0435\u0437 с\u0435\u0442\u0438; к\u043e\u043c\u0431\u0438\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0439 и\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0435\u0442 ф\u043e\u0442\u043e д\u043b\u044f п\u043e\u0438\u0441\u043a\u0430 б\u043b\u044e\u0434\u0430, а К\u0411\u0416\u0423 б\u0435\u0440\u0451\u0442 и\u0437 к\u0430\u0442\u0430\u043b\u043e\u0433\u0430.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            NutritionModeButton("\u0418\u0418", mode == NutritionSourceMode.AI_ONLY) { onModeSelected(NutritionSourceMode.AI_ONLY) }
+            NutritionModeButton("\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u0430\u044f б\u0430\u0437\u0430", mode == NutritionSourceMode.LOCAL_DATABASE) { onModeSelected(NutritionSourceMode.LOCAL_DATABASE) }
+            NutritionModeButton("\u041a\u043e\u043c\u0431\u0438\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0439", mode == NutritionSourceMode.HYBRID) { onModeSelected(NutritionSourceMode.HYBRID) }
+        }
+    }
+}
+
+@Composable
+private fun NutritionModeButton(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    if (selected) {
+        Button(modifier = Modifier.fillMaxWidth(), onClick = onClick) { Text(label) }
+    } else {
+        OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = onClick) { Text(label) }
     }
 }
 
