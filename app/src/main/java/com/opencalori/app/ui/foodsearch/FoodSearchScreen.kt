@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AlertDialog
@@ -45,6 +46,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -53,6 +56,7 @@ import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.domain.model.Product
 import com.opencalori.app.domain.model.ProductSource
 import com.opencalori.app.ui.theme.AppShapes
+import com.opencalori.app.ui.util.FoodQuantityValidation
 import com.opencalori.app.ui.util.NumberFormat
 import java.time.LocalDate
 import java.time.LocalTime
@@ -118,11 +122,28 @@ fun FoodSearchScreen(
             OutlinedTextField(
                 value = state.query,
                 onValueChange = viewModel::setQuery,
-                placeholder = { Text("Начните вводить название") },
+                label = { Text("\u041f\u043e\u0438\u0441\u043a продукта или блюда") },
+                placeholder = { Text("\u041d\u0430\u0447\u043d\u0438\u0442\u0435 вводить название") },
+                trailingIcon = if (state.query.isNotBlank()) {
+                    {
+                        IconButton(onClick = { viewModel.setQuery("") }) {
+                            Icon(Icons.Default.Close, contentDescription = "\u041e\u0447\u0438\u0441\u0442\u0438\u0442\u044c поиск")
+                        }
+                    }
+                } else null,
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
             Spacer(Modifier.height(12.dp))
+            if (state.query.isNotBlank()) {
+                Text(
+                    "\u041d\u0430\u0439\u0434\u0435\u043d\u043e: позиций " + visible.size,
+                    modifier = Modifier.semantics { contentDescription = "\u041d\u0430\u0439\u0434\u0435\u043d\u043e позиций: " + visible.size },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+            }
 
             if (state.query.isBlank() && state.recents.isNotEmpty()) {
                 Text("Недавнее", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
@@ -192,6 +213,7 @@ private fun ProductRow(product: Product, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .semantics(mergeDescendants = true) { contentDescription = productAccessibilityDescription(product) }
             .clickable(onClick = onClick),
         shape = AppShapes.Medium
     ) {
@@ -259,6 +281,21 @@ private fun ProductRow(product: Product, onClick: () -> Unit) {
         }
     }
 }
+private fun productAccessibilityDescription(product: Product): String {
+    val source = when (product.source) {
+        ProductSource.DISH -> "\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0435 блюдо. "
+        ProductSource.CUSTOM -> "\u0421\u0432\u043e\u0439 продукт. "
+        ProductSource.RECENT -> "\u0418\u0437 недавнего. "
+        ProductSource.BUILT_IN -> ""
+    }
+    val portion = if (product.source == ProductSource.DISH) {
+        " Порция " + product.suggestedGrams.toInt() + " г."
+    } else {
+        ""
+    }
+    return source + product.name + ". " + product.caloriesPer100g.toInt() + " килокалорий на 100 г. Белки " + NumberFormat.compact(product.proteinPer100g) + ". Жиры " + NumberFormat.compact(product.fatPer100g) + ". Углеводы " + NumberFormat.compact(product.carbsPer100g) + ". Нажмите, чтобы задать порцию." + portion
+}
+
 private fun targetDateLabel(date: LocalDate): String {
     if (date == LocalDate.now()) return "Запись: сегодня"
     val formatter = DateTimeFormatter.ofPattern("d MMMM", Locale("ru"))
@@ -281,6 +318,7 @@ private fun AddProductDialog(
     var grams by remember(product.key) { mutableStateOf(product.suggestedGrams.toInt().toString()) }
     var mealType by remember { mutableStateOf(suggestedMealType()) }
     val gramsValue = NumberFormat.parse(grams) ?: 0f
+    val gramsError = FoodQuantityValidation.errorMessage(gramsValue)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -291,9 +329,9 @@ private fun AddProductDialog(
                     value = grams,
                     onValueChange = { grams = NumberFormat.sanitizeDecimalInput(it) },
                     label = { Text("Масса, г") },
-                    isError = grams.isNotEmpty() && gramsValue <= 0f,
+                    isError = grams.isNotEmpty() && gramsError != null,
                     supportingText = {
-                        Text(if (grams.isNotEmpty() && gramsValue <= 0f) "Введите массу больше 0 г" else "Укажите массу порции")
+                        Text(gramsError ?: "\u0423\u043a\u0430\u0436\u0438\u0442\u0435 массу порции")
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -310,7 +348,7 @@ private fun AddProductDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onAdd(gramsValue, mealType) }, enabled = gramsValue > 0f) {
+            TextButton(onClick = { onAdd(gramsValue, mealType) }, enabled = gramsError == null) {
                 Text("Добавить")
             }
         },
@@ -335,7 +373,8 @@ private fun CreateProductDialog(
 
     val caloriesValue = NumberFormat.parse(calories)
     val gramsValue = NumberFormat.parse(grams) ?: 0f
-    val valid = name.isNotBlank() && caloriesValue != null && gramsValue > 0f
+    val gramsError = FoodQuantityValidation.errorMessage(gramsValue)
+    val valid = name.isNotBlank() && caloriesValue != null && gramsError == null
 
     AlertDialog(
         onDismissRequest = onDismiss,

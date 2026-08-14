@@ -76,6 +76,7 @@ import com.opencalori.app.domain.model.WeightEntry
 import com.opencalori.app.ui.components.DailyBalanceCard
 import com.opencalori.app.ui.components.WeightChart
 import com.opencalori.app.ui.theme.AppShapes
+import com.opencalori.app.ui.util.FoodQuantityValidation
 import com.opencalori.app.ui.util.NumberFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -591,6 +592,7 @@ private fun WeightInputDialog(initial: Float?, onDismiss: () -> Unit, onSave: (F
 private fun GramsEditDialog(item: FoodItem, onDismiss: () -> Unit, onSave: (Float) -> Unit) {
     var text by remember(item.id) { mutableStateOf(NumberFormat.compact(item.grams)) }
     val grams = NumberFormat.parse(text)
+    val gramsError = FoodQuantityValidation.errorMessage(grams ?: 0f)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(item.name) },
@@ -599,8 +601,10 @@ private fun GramsEditDialog(item: FoodItem, onDismiss: () -> Unit, onSave: (Floa
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = NumberFormat.sanitizeDecimalInput(it) },
-                    label = { Text("Масса, г") },
+                    label = { Text("\u041c\u0430\u0441\u0441\u0430, г") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = text.isNotEmpty() && gramsError != null,
+                    supportingText = { Text(gramsError ?: "\u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c массу порции") },
                     singleLine = true
                 )
                 Text(
@@ -611,7 +615,7 @@ private fun GramsEditDialog(item: FoodItem, onDismiss: () -> Unit, onSave: (Floa
             }
         },
         confirmButton = {
-            TextButton(onClick = { grams?.let(onSave) }, enabled = grams != null && grams > 0f) {
+            TextButton(onClick = { grams?.let(onSave) }, enabled = gramsError == null) {
                 Text("Сохранить")
             }
         },
