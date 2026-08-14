@@ -9,8 +9,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Deterministic nutrition source for hybrid mode. The vision model may suggest names and weights,
- * but values per 100 g are always taken from the bundled catalogue or the user's own products.
+ * Deterministic nutrition source. AI can suggest only names and visible composition; all
+ * calories and macros are always selected from the bundled catalogue or user products.
  */
 @Singleton
 class LocalNutritionResolver @Inject constructor(
@@ -30,6 +30,33 @@ class LocalNutritionResolver @Inject constructor(
                     proteinPer100g = product.proteinPer100g,
                     fatPer100g = product.fatPer100g,
                     carbsPer100g = product.carbsPer100g
+                )
+            }
+        }
+        return LocalNutritionResolution(resolved, unmatched)
+    }
+
+    /**
+     * Resolves visible ingredient names into neutral 100 g editable local entries. No AI macro
+     * values or AI estimated portions are accepted in this code path.
+     */
+    suspend fun resolveNames(names: List<String>): LocalNutritionResolution {
+        val resolved = mutableListOf<EstimatedIngredient>()
+        val unmatched = mutableListOf<String>()
+        names.map(String::trim).filter(String::isNotBlank).distinct().forEach { name ->
+            val product = resolve(name)
+            if (product == null) {
+                unmatched += name
+            } else {
+                resolved += EstimatedIngredient(
+                    name = product.name,
+                    rawGrams = DEFAULT_PORTION_GRAMS,
+                    cookedGrams = DEFAULT_PORTION_GRAMS,
+                    caloriesPer100g = product.caloriesPer100g,
+                    proteinPer100g = product.proteinPer100g,
+                    fatPer100g = product.fatPer100g,
+                    carbsPer100g = product.carbsPer100g,
+                    notes = "\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u043f\u0440\u043e\u0434\u0443\u043a\u0442"
                 )
             }
         }
@@ -67,10 +94,14 @@ class LocalNutritionResolver @Inject constructor(
 
     private fun normalize(value: String): String = value
         .lowercase(Locale.ROOT)
-        .replace('ё', 'е')
-        .replace(Regex("[^a-zа-я0-9]+"), " ")
+        .replace('\u0451', '\u0435')
+        .replace(Regex("[^a-z\u0430-\u044f0-9]+"), " ")
         .trim()
         .replace(Regex("\\s+"), " ")
+
+    private companion object {
+        const val DEFAULT_PORTION_GRAMS = 100f
+    }
 }
 
 data class LocalNutritionResolution(

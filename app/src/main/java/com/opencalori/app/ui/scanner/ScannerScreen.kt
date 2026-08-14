@@ -496,7 +496,7 @@ private fun AnalyzingStage(state: ScannerUiState, onCancel: () -> Unit) {
         CircularProgressIndicator()
         Spacer(Modifier.height(16.dp))
         Text(
-            if (firstStage) "Определяю блюдо и состав…" else "Оцениваю вес и КБЖУ…",
+            if (firstStage) "\u041e\u043f\u0440\u0435\u0434\u0435\u043b\u044f\u044e блюдо и состав…" else "\u0421\u043e\u043f\u043e\u0441\u0442\u0430\u0432\u043b\u044f\u044e с локальной базой…",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
@@ -561,12 +561,33 @@ private fun ReviewDishStage(state: ScannerUiState, viewModel: ScannerViewModel) 
         Spacer(Modifier.height(16.dp))
         PhotoPreview(state.photo)
         Spacer(Modifier.height(12.dp))
-        Text("Проверьте блюдо и состав", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("\u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 блюдо и состав", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(
-            "ИИ определил блюдо и список ингредиентов - поправьте, если что-то не так",
+            "\u0418\u0418 определил блюдо и список ингредиентов. КБЖУ будут взяты только из локальной базы.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        if (state.isLocalDraft) {
+            Spacer(Modifier.height(12.dp))
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                shape = AppShapes.Small
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 черновик", fontWeight = FontWeight.Bold)
+                    Text(
+                        if (state.unmatchedIngredients.isEmpty()) {
+                            "\u0411\u043b\u044e\u0434\u043e не найдено в общем каталоге. Оно не будет добавлено туда автоматически."
+                        } else {
+                            "\u041d\u0435 найдено в локальной базе: " + state.unmatchedIngredients.joinToString()
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(16.dp))
 
         OutlinedTextField(
@@ -625,7 +646,7 @@ private fun ReviewDishStage(state: ScannerUiState, viewModel: ScannerViewModel) 
             enabled = dish.ingredients.any { it.name.isNotBlank() },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Оценить вес и КБЖУ")
+            Text("\u041f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c по локальной базе")
         }
     }
 }
@@ -647,6 +668,38 @@ private fun ReviewGramsStage(state: ScannerUiState, viewModel: ScannerViewModel)
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(12.dp))
+        when {
+            state.localDish != null -> {
+                Card(
+                    Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    shape = AppShapes.Small
+                ) {
+                    Text(
+                        "\u041d\u0430\u0439\u0434\u0435\u043d\u043e локальное блюдо: " + state.localDish.name,
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+            state.isLocalDraft -> {
+                Card(
+                    Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    shape = AppShapes.Small
+                ) {
+                    Text(
+                        "\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 черновик: в общий каталог ничего не добавляется. КБЖУ ниже взяты из найденных локальных продуктов.",
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
@@ -713,6 +766,7 @@ private fun ReviewGramsStage(state: ScannerUiState, viewModel: ScannerViewModel)
                                     viewModel.updateEstimated(index, item.copy(caloriesPer100g = it))
                                 },
                                 resetKey = item.id,
+                                enabled = false,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -724,6 +778,7 @@ private fun ReviewGramsStage(state: ScannerUiState, viewModel: ScannerViewModel)
                                 value = item.proteinPer100g,
                                 onValueChange = { viewModel.updateEstimated(index, item.copy(proteinPer100g = it)) },
                                 resetKey = item.id,
+                                enabled = false,
                                 modifier = Modifier.weight(1f)
                             )
                             NumberField(
@@ -731,6 +786,7 @@ private fun ReviewGramsStage(state: ScannerUiState, viewModel: ScannerViewModel)
                                 value = item.fatPer100g,
                                 onValueChange = { viewModel.updateEstimated(index, item.copy(fatPer100g = it)) },
                                 resetKey = item.id,
+                                enabled = false,
                                 modifier = Modifier.weight(1f)
                             )
                             NumberField(
@@ -738,6 +794,7 @@ private fun ReviewGramsStage(state: ScannerUiState, viewModel: ScannerViewModel)
                                 value = item.carbsPer100g,
                                 onValueChange = { viewModel.updateEstimated(index, item.copy(carbsPer100g = it)) },
                                 resetKey = item.id,
+                                enabled = false,
                                 modifier = Modifier.weight(1f)
                             )
                         }

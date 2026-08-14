@@ -28,7 +28,8 @@ fun NumberField(
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
     resetKey: Any? = null,
-    maxLength: Int = 7
+    maxLength: Int = 7,
+    enabled: Boolean = true
 ) {
     var draft by remember(resetKey) { mutableStateOf(NumberFormat.compact(value)) }
 
@@ -48,6 +49,7 @@ fun NumberField(
         label = { Text(label, style = MaterialTheme.typography.labelSmall) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         singleLine = true,
+        enabled = enabled,
         modifier = modifier
     )
 }

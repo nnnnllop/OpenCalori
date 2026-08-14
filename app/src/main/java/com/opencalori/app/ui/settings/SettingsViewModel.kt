@@ -88,6 +88,16 @@ class SettingsViewModel @Inject constructor(
         it.copy(modelId = value, validation = ApiValidationResult(ValidationStatus.IDLE))
     }
 
+    /** Applies the public NVIDIA endpoint and model ID without touching the user key. */
+    fun useNvidiaNemotronPreset() = _uiState.update {
+        it.copy(
+            baseUrl = NVIDIA_BASE_URL,
+            modelId = NVIDIA_NEMOTRON_MODEL,
+            baseUrlError = null,
+            validation = ApiValidationResult(ValidationStatus.IDLE)
+        )
+    }
+
     fun saveAndValidate() {
         val state = _uiState.value
         val config = ApiConfig(state.baseUrl.trim(), state.apiKey.trim(), state.modelId.trim())
@@ -218,6 +228,11 @@ class SettingsViewModel @Inject constructor(
 
     /** Suggested file name for the export picker. */
     fun defaultBackupFileName(dateStamp: String): String = "opencalori-backup-$dateStamp.json"
+
+    private companion object {
+        const val NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+        const val NVIDIA_NEMOTRON_MODEL = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    }
 
     private fun ImportSummary.toMessage(): String = when {
         restored -> "Импорт отменён: восстановлены прежние данные"

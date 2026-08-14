@@ -6,9 +6,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.opencalori.app.data.image.ImageProcessor
 import com.opencalori.app.data.repository.LocalNutritionResolver
+import com.opencalori.app.data.repository.PhotoNutritionResolver
+import com.opencalori.app.domain.model.Dish
 import com.opencalori.app.domain.model.EstimatedIngredient
 import com.opencalori.app.domain.model.MealType
-import com.opencalori.app.domain.model.NutritionSourceMode
 import com.opencalori.app.domain.model.RecognizedDish
 import com.opencalori.app.domain.model.RecognizedIngredient
 import com.opencalori.app.domain.model.UserProfile
@@ -56,6 +57,9 @@ data class ScannerUiState(
     val photo: ByteArray? = null,
     val photoBase64: String? = null,
     val dish: RecognizedDish? = null,
+    val localDish: Dish? = null,
+    val isLocalDraft: Boolean = false,
+    val unmatchedIngredients: List<String> = emptyList(),
     val estimated: List<EstimatedIngredient> = emptyList(),
     val mealType: MealType = suggestedMealType(),
     val targetDate: LocalDate = LocalDate.now(),
@@ -78,6 +82,9 @@ data class ScannerUiState(
         return stage == other.stage &&
             photoBase64 == other.photoBase64 &&
             dish == other.dish &&
+            localDish == other.localDish &&
+            isLocalDraft == other.isLocalDraft &&
+            unmatchedIngredients == other.unmatchedIngredients &&
             estimated == other.estimated &&
             mealType == other.mealType &&
             targetDate == other.targetDate &&
@@ -90,6 +97,9 @@ data class ScannerUiState(
         var result = stage.hashCode()
         result = 31 * result + (photoBase64?.hashCode() ?: 0)
         result = 31 * result + (dish?.hashCode() ?: 0)
+        result = 31 * result + (localDish?.hashCode() ?: 0)
+        result = 31 * result + isLocalDraft.hashCode()
+        result = 31 * result + unmatchedIngredients.hashCode()
         result = 31 * result + estimated.hashCode()
         result = 31 * result + mealType.hashCode()
         result = 31 * result + targetDate.hashCode()
@@ -108,6 +118,7 @@ class ScannerViewModel @Inject constructor(
     private val userPrefs: UserPreferences,
     private val apiConfigStore: ApiConfigStore,
     private val localNutritionResolver: LocalNutritionResolver,
+    private val photoNutritionResolver: PhotoNutritionResolver,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -188,15 +199,17 @@ class ScannerViewModel @Inject constructor(
                     return@onSuccess
                 }
 
-                val skipReview = profile().aiSkipListReview
+                // The list review is mandatory for photo results: the user must see whether a
+                // canonical local dish was found or an unknown result remains a local draft.
                 _uiState.update {
                     it.copy(
                         dish = dish,
-                        stage = if (skipReview) ScannerStage.ANALYZING_2 else ScannerStage.REVIEW_DISH
+                        stage = ScannerStage.REVIEW_DISH,
+                        localDish = null,
+                        isLocalDraft = false,
+                        unmatchedIngredients = emptyList(),
+                        estimated = emptyList()
                     )
-                }
-                if (skipReview) {
-                    runStage2(base64, dish.dishName, dish.ingredients.map { it.name })
                 }
             }
             .onFailure { throwable -> fail(throwable, "Ошибка распознавания") }
@@ -250,6 +263,35 @@ class ScannerViewModel @Inject constructor(
 
     private suspend fun runStage2(photo: String, dishName: String, items: List<String>) {
         _uiState.update { it.copy(stage = ScannerStage.ANALYZING_2, error = null) }
+        val localResolution = photoNutritionResolver.resolve(dishName, items)
+        if (!localResolution.isComplete) {
+            _uiState.update {
+                it.copy(
+                    stage = ScannerStage.REVIEW_DISH,
+                    localDish = null,
+                    isLocalDraft = true,
+                    unmatchedIngredients = localResolution.unmatchedNames,
+                    estimated = localResolution.items
+                )
+            }
+            return
+        }
+        _uiState.update {
+            it.copy(
+                estimated = localResolution.items,
+                localDish = localResolution.matchedDish,
+                isLocalDraft = localResolution.isDraft,
+                unmatchedIngredients = emptyList()
+            )
+        }
+        val localProfile = profile()
+        when {
+            localProfile.aiSkipGramsReview && localProfile.aiSkipFinalReview -> saveMeal()
+            localProfile.aiSkipGramsReview -> _uiState.update { it.copy(stage = ScannerStage.REVIEW_FINAL) }
+            else -> _uiState.update { it.copy(stage = ScannerStage.REVIEW_GRAMS) }
+        }
+        return
+
         val aiEstimate = aiRepository.estimateNutrition(photo, dishName, items)
         if (aiEstimate.isFailure) {
             fail(aiEstimate.exceptionOrNull() ?: IllegalStateException(), "\\u041e\\u0448\\u0438\\u0431\\u043a\\u0430 \u043e\\u0446\\u0435\\u043d\\u043a\\u0438 \u041a\\u0411\\u0416\\u0423")
@@ -346,7 +388,11 @@ class ScannerViewModel @Inject constructor(
         analysisJob?.cancel()
         analysisJob = null
         _uiState.update {
-            ScannerUiState(stage = ScannerStage.CAPTURE, mealType = it.mealType)
+            ScannerUiState(
+                stage = ScannerStage.CAPTURE,
+                mealType = it.mealType,
+                targetDate = it.targetDate
+            )
         }
     }
 

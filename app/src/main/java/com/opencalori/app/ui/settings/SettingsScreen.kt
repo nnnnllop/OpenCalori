@@ -216,7 +216,18 @@ fun SettingsScreen(
                 }
                 SectionTitle("BYOK: подключение ИИ")
                 Text(
-                    "Подойдёт любой OpenAI-совместимый API. Ключ шифруется и остаётся на устройстве.",
+                    "\u041f\u043e\u0434\u043e\u0439\u0434\u0451\u0442 любой OpenAI-совместимый API. Ключ шифруется и остаётся на устройстве.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedButton(
+                    onClick = viewModel::useNvidiaNemotronPreset,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("\u0418\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u044c NVIDIA Nemotron для фотосканера")
+                }
+                Text(
+                    "\u041f\u0440\u0435\u0441\u0435\u0442 подставит только URL и Model ID; ваш API-ключ не меняется.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
