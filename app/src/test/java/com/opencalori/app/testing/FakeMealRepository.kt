@@ -4,6 +4,7 @@ import com.opencalori.app.domain.model.FoodItem
 import com.opencalori.app.domain.model.Meal
 import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.domain.model.WeightEntry
+import com.opencalori.app.domain.repository.MealDishItems
 import com.opencalori.app.domain.repository.MealRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,6 +65,16 @@ class FakeMealRepository : MealRepository {
             )
             meals.value = current + meal
             meal.id
+        }
+    }
+
+    override suspend fun addDishItems(
+        epochDay: Long,
+        mealType: MealType,
+        dishes: List<MealDishItems>
+    ) {
+        dishes.filter { it.items.isNotEmpty() }.forEach { dish ->
+            addItems(epochDay, mealType, dish.items, dish.dishName)
         }
     }
 

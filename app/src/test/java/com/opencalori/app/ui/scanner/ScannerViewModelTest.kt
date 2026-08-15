@@ -159,7 +159,8 @@ class ScannerViewModelTest {
         vm.confirmIngredientsAndEstimate()
         advanceUntilIdle()
         assertEquals(ScannerStage.ERROR, vm.uiState.value.stage)
-        assertTrue(vm.uiState.value.error.orEmpty().contains("\u0441\u0435\u0442\u044c"))
+        assertTrue(vm.uiState.value.error.orEmpty().contains("Не удалось рассчитать КБЖУ"))
+        assertTrue(vm.uiState.value.manualRetryAvailable)
         assertNotNull(vm.uiState.value.photo)
     }
 
@@ -261,7 +262,7 @@ class ScannerViewModelTest {
     }
 
     @Test
-    fun `recognition failure surfaces the repository message and keeps retryable photo`() = runTest {
+    fun `recognition failure hides raw repository message and keeps retryable photo`() = runTest {
         ai.dishResult = Result.failure(IllegalStateException("\u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 API-\u043a\u043b\u044e\u0447 (401)"))
         val vm = viewModel()
         advanceUntilIdle()
@@ -270,7 +271,8 @@ class ScannerViewModelTest {
         advanceUntilIdle()
 
         assertEquals(ScannerStage.ERROR, vm.uiState.value.stage)
-        assertEquals("\u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 API-\u043a\u043b\u044e\u0447 (401)", vm.uiState.value.error)
+        assertEquals("Не удалось распознать еду на фото. Повторите текущий шаг.", vm.uiState.value.error)
+        assertTrue(vm.uiState.value.manualRetryAvailable)
         assertNotNull(vm.uiState.value.photo)
     }
 

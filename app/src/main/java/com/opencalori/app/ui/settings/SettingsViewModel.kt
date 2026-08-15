@@ -163,7 +163,7 @@ class SettingsViewModel @Inject constructor(
                     busy = false,
                     message = result.fold(
                         onSuccess = { count -> "Экспортировано записей: $count" },
-                        onFailure = { error -> "Не удалось экспортировать: ${error.message ?: "ошибка"}" }
+                        onFailure = { "Не удалось экспортировать резервную копию. Попробуйте ещё раз." }
                     )
                 )
             }
@@ -180,7 +180,7 @@ class SettingsViewModel @Inject constructor(
                     busy = false,
                     pendingImport = result.getOrNull()?.let { preview -> PendingImport(uri, preview) },
                     message = result.exceptionOrNull()?.let { error ->
-                        "Не удалось прочитать резервную копию: ${error.message ?: "ошибка"}"
+                        "Не удалось прочитать резервную копию. Выберите другой файл или попробуйте ещё раз."
                     }
                 )
             }
@@ -201,7 +201,7 @@ class SettingsViewModel @Inject constructor(
                     canUndoImport = summary != null,
                     message = summary?.toMessage() ?: run {
                         val error = result.exceptionOrNull()
-                        "Не удалось импортировать: ${error?.message ?: "ошибка"}"
+                        "Не удалось импортировать резервную копию. Проверьте файл и попробуйте ещё раз."
                     }
                 )
             }
@@ -218,7 +218,7 @@ class SettingsViewModel @Inject constructor(
                     canUndoImport = false,
                     message = result.fold(
                         onSuccess = { "Импорт отменён: восстановлены прежние данные" },
-                        onFailure = { error -> "Не удалось отменить импорт: ${error.message ?: "ошибка"}" }
+                        onFailure = { "Не удалось отменить импорт. Попробуйте ещё раз." }
                     )
                 )
             }

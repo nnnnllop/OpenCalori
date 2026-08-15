@@ -3,11 +3,13 @@ package com.opencalori.app.ui.textfood
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.opencalori.app.data.network.aiUserMessage
 import com.opencalori.app.domain.model.EstimatedIngredient
 import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.domain.model.RecognizedDish
 import com.opencalori.app.domain.model.RecognizedIngredient
 import com.opencalori.app.domain.repository.AiRepository
+import com.opencalori.app.domain.repository.MealDishItems
 import com.opencalori.app.domain.repository.MealRepository
 import com.opencalori.app.ui.navigation.Routes
 import com.opencalori.app.ui.util.FoodQuantityValidation
@@ -48,7 +50,10 @@ data class TextFoodState(
     val dishes: List<TextDishDraft> = emptyList(),
     val busy: Boolean = false,
     val saved: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    /** One manual retry remains after repository-level JSON repair. */
+    val manualRetryAvailable: Boolean = false,
+    val manualRetryUsed: Boolean = false
 ) {
     val canRecognize: Boolean get() = query.trim().length >= 2 && !busy
 
@@ -78,14 +83,23 @@ class TextFoodViewModel @Inject constructor(
     private val _state = MutableStateFlow(TextFoodState())
     val state: StateFlow<TextFoodState> = _state.asStateFlow()
 
-    fun setQuery(value: String) = _state.update { it.copy(query = value, error = null) }
+    fun setQuery(value: String) = _state.update {
+        it.copy(query = value.take(MAX_QUERY_LENGTH), error = null, manualRetryAvailable = false, manualRetryUsed = false)
+    }
 
     fun setMealType(value: MealType) = _state.update { it.copy(mealType = value) }
 
-    fun recognize() {
+    fun recognize(manualRetry: Boolean = false) {
         val description = _state.value.query.trim()
         if (description.length < 2 || _state.value.busy) return
-        _state.update { it.copy(busy = true, error = null) }
+        _state.update {
+            it.copy(
+                busy = true,
+                error = null,
+                manualRetryAvailable = false,
+                manualRetryUsed = if (manualRetry) it.manualRetryUsed else false
+            )
+        }
         viewModelScope.launch {
             val result = try {
                 ai.recognizeTextDishes(description)
@@ -108,20 +122,29 @@ class TextFoodViewModel @Inject constructor(
                         _state.update {
                             it.copy(
                                 busy = false,
-                                error = "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043d\u0430\u0439\u0442\u0438 \u0435\u0434\u0443 \u0432 \u043e\u043f\u0438\u0441\u0430\u043d\u0438\u0438. \u041e\u043f\u0438\u0448\u0438\u0442\u0435 \u0431\u043b\u044e\u0434\u0430 \u043f\u043e\u0434\u0440\u043e\u0431\u043d\u0435\u0435."
+                                error = "Не удалось найти еду в описании. Опишите блюда подробнее.",
+                                manualRetryAvailable = !it.manualRetryUsed
                             )
                         }
                         return@onSuccess
                     }
                     _state.update {
-                        it.copy(busy = false, dishes = dishes, stage = TextFoodStage.DISHES, error = null)
+                        it.copy(
+                            busy = false,
+                            dishes = dishes,
+                            stage = TextFoodStage.DISHES,
+                            error = null,
+                            manualRetryAvailable = false,
+                            manualRetryUsed = false
+                        )
                     }
                 }
                 .onFailure { error ->
                     _state.update {
                         it.copy(
                             busy = false,
-                            error = error.message ?: "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0440\u0430\u0437\u043e\u0431\u0440\u0430\u0442\u044c \u043e\u043f\u0438\u0441\u0430\u043d\u0438\u0435"
+                            error = error.aiUserMessage("Не удалось обработать описание. Повторите текущий шаг."),
+                            manualRetryAvailable = !it.manualRetryUsed
                         )
                     }
                 }
@@ -129,19 +152,22 @@ class TextFoodViewModel @Inject constructor(
     }
 
     fun retry() {
-        when (_state.value.stage) {
-            TextFoodStage.INPUT -> recognize()
-            TextFoodStage.DISHES -> calculate()
+        val state = _state.value
+        if (!state.manualRetryAvailable || state.busy) return
+        when (state.stage) {
+            TextFoodStage.INPUT -> recognize(manualRetry = true)
+            TextFoodStage.DISHES -> calculate(manualRetry = true)
             TextFoodStage.GRAMS -> Unit
         }
     }
 
     // ---- Dish and ingredient editing ----
 
-    fun renameDish(dishIndex: Int, name: String) = updateDish(dishIndex) { it.copy(name = name) }
+    fun renameDish(dishIndex: Int, name: String) =
+        updateDish(dishIndex) { it.copy(name = name.trim().take(MAX_ITEM_NAME_LENGTH)) }
 
     fun addDish(name: String) {
-        val trimmed = name.trim()
+        val trimmed = name.trim().take(MAX_ITEM_NAME_LENGTH)
         if (trimmed.isEmpty()) return
         _state.update { it.copy(dishes = it.dishes + TextDishDraft(name = trimmed), error = null) }
     }
@@ -152,7 +178,7 @@ class TextFoodViewModel @Inject constructor(
     }
 
     fun addIngredient(dishIndex: Int, name: String) {
-        val trimmed = name.trim()
+        val trimmed = name.trim().take(MAX_ITEM_NAME_LENGTH)
         if (trimmed.isEmpty()) return
         updateDish(dishIndex) { it.copy(ingredients = it.ingredients + RecognizedIngredient(trimmed)) }
     }
@@ -160,7 +186,9 @@ class TextFoodViewModel @Inject constructor(
     fun renameIngredient(dishIndex: Int, itemIndex: Int, name: String) = updateDish(dishIndex) { dish ->
         if (itemIndex !in dish.ingredients.indices) dish
         else dish.copy(
-            ingredients = dish.ingredients.toMutableList().also { it[itemIndex] = it[itemIndex].copy(name = name) }
+            ingredients = dish.ingredients.toMutableList().also {
+                it[itemIndex] = it[itemIndex].copy(name = name.trim().take(MAX_ITEM_NAME_LENGTH))
+            }
         )
     }
 
@@ -175,10 +203,17 @@ class TextFoodViewModel @Inject constructor(
 
     // ---- Nutrition ----
 
-    fun calculate() {
+    fun calculate(manualRetry: Boolean = false) {
         val state = _state.value
         if (!state.canCalculate) return
-        _state.update { it.copy(busy = true, error = null) }
+        _state.update {
+            it.copy(
+                busy = true,
+                error = null,
+                manualRetryAvailable = false,
+                manualRetryUsed = if (manualRetry) it.manualRetryUsed else false
+            )
+        }
         viewModelScope.launch {
             val resolved = mutableListOf<TextDishDraft>()
             state.dishes.forEach { dish ->
@@ -193,7 +228,8 @@ class TextFoodViewModel @Inject constructor(
                     _state.update {
                         it.copy(
                             busy = false,
-                            error = error.message ?: "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0440\u0430\u0441\u0441\u0447\u0438\u0442\u0430\u0442\u044c \u041a\u0411\u0416\u0423"
+                            error = error.aiUserMessage("Не удалось рассчитать КБЖУ. Повторите текущий шаг."),
+                            manualRetryAvailable = !it.manualRetryUsed
                         )
                     }
                     return@launch
@@ -202,7 +238,8 @@ class TextFoodViewModel @Inject constructor(
                     _state.update {
                         it.copy(
                             busy = false,
-                            error = "\u0418\u0418 \u043d\u0435 \u0432\u0435\u0440\u043d\u0443\u043b \u043f\u0440\u043e\u0434\u0443\u043a\u0442\u044b \u0434\u043b\u044f \"" + dish.name + "\". \u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u0441\u043e\u0441\u0442\u0430\u0432."
+                            error = "ИИ не вернул продукты для «${dish.name}». Проверьте состав и повторите текущий шаг.",
+                            manualRetryAvailable = !it.manualRetryUsed
                         )
                     }
                     return@launch
@@ -211,7 +248,14 @@ class TextFoodViewModel @Inject constructor(
                 resolved += dish.copy(estimated = estimated.map { it.copy(rawGrams = 0f, cookedGrams = 0f) })
             }
             _state.update {
-                it.copy(busy = false, dishes = resolved, stage = TextFoodStage.GRAMS, error = null)
+                it.copy(
+                    busy = false,
+                    dishes = resolved,
+                    stage = TextFoodStage.GRAMS,
+                    error = null,
+                    manualRetryAvailable = false,
+                    manualRetryUsed = false
+                )
             }
         }
     }
@@ -236,14 +280,16 @@ class TextFoodViewModel @Inject constructor(
         if (!state.canSave) return
         _state.update { it.copy(busy = true) }
         viewModelScope.launch {
-            state.dishes.forEach { dish ->
-                meals.addItems(
-                    epochDay = targetEpochDay,
-                    mealType = state.mealType,
-                    items = dish.estimated.map { it.toFoodItem() },
-                    dishName = dish.name.takeIf { it.isNotBlank() }
-                )
-            }
+            meals.addDishItems(
+                epochDay = targetEpochDay,
+                mealType = state.mealType,
+                dishes = state.dishes.map { dish ->
+                    MealDishItems(
+                        dishName = dish.name.takeIf { it.isNotBlank() },
+                        items = dish.estimated.map { it.toFoodItem() }
+                    )
+                }
+            )
             _state.update { it.copy(busy = false, saved = true) }
         }
     }
@@ -255,8 +301,15 @@ class TextFoodViewModel @Inject constructor(
                 dishes = state.dishes.mapIndexed { index, dish ->
                     if (index == dishIndex) transform(dish) else dish
                 },
-                error = null
+                error = null,
+                manualRetryAvailable = false,
+                manualRetryUsed = false
             )
         }
+    }
+
+    private companion object {
+        const val MAX_QUERY_LENGTH = 1_000
+        const val MAX_ITEM_NAME_LENGTH = 120
     }
 }

@@ -105,14 +105,15 @@ class TextFoodViewModelTest {
     }
 
     @Test
-    fun `a failing model keeps the typed description and reports the message`() = runTest {
+    fun `a failing model keeps the typed description and hides raw message`() = runTest {
         ai.dishesResult = Result.failure(IllegalStateException("Сеть недоступна"))
         val vm = viewModel()
 
         describeAndRecognize(vm)
         advanceUntilIdle()
 
-        assertEquals("Сеть недоступна", vm.state.value.error)
+        assertEquals("Не удалось обработать описание. Повторите текущий шаг.", vm.state.value.error)
+        assertTrue(vm.state.value.manualRetryAvailable)
         assertEquals("паста карбонара и салат", vm.state.value.query)
         assertFalse(vm.state.value.busy)
     }

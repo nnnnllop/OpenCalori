@@ -18,8 +18,13 @@ data class ChatCompletionRequest(
     val model: String,
     val messages: List<ChatMessage>,
     @SerialName("max_tokens") val maxTokens: Int = 1024,
-    val temperature: Float = 0.2f
+    val temperature: Float = 0.2f,
+    @SerialName("response_format") val responseFormat: JsonResponseFormat? = null
 )
+
+/** OpenAI-compatible JSON mode, sent only to known compatible providers. */
+@Serializable
+data class JsonResponseFormat(val type: String = "json_object")
 
 /**
  * `content` is a raw JsonElement on purpose.

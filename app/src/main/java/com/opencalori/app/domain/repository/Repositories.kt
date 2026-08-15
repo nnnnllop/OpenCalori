@@ -18,6 +18,11 @@ import kotlinx.coroutines.flow.Flow
  * Diary storage: meals, food items and weight history.
  * Implemented by Room; faked in unit tests.
  */
+data class MealDishItems(
+    val dishName: String?,
+    val items: List<FoodItem>
+)
+
 interface MealRepository {
     fun getMealsForDay(epochDay: Long): Flow<List<Meal>>
 
@@ -32,6 +37,13 @@ interface MealRepository {
         items: List<FoodItem>,
         dishName: String? = null
     ): Long
+
+    /** Writes all separate dishes in one database transaction or writes none of them. */
+    suspend fun addDishItems(
+        epochDay: Long,
+        mealType: MealType,
+        dishes: List<MealDishItems>
+    )
 
     suspend fun deleteMeal(mealId: Long)
 

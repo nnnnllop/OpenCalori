@@ -9,233 +9,217 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.floatOrNull
+import kotlinx.serialization.json.doubleOrNull
 
-/**
- * Turns whatever an LLM decided to answer into domain objects.
- *
- * Deliberately forgiving: models wrap JSON in markdown fences, add a sentence before it,
- * return numbers as strings ("200 \u0433"), nest the array under a key, or answer with the old
- * single-dish object instead of the multi-dish contract. All of that is a normal Tuesday, and
- * none of it should surface as an error to the user. Pure Kotlin so every one of those cases
- * is covered by unit tests.
- */
+/** Strict boundary between an untrusted model answer and the application domain. */
 object AiResponseParser {
+    private val json = Json { ignoreUnknownKeys = false; isLenient = false; explicitNulls = true }
 
-    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private const val MAX_DISHES = 20
+    private const val MAX_INGREDIENTS = 40
+    private const val MAX_NAME_LENGTH = 120
+    private const val MAX_NOTE_LENGTH = 160
+    private const val MAX_GRAMS = 5_000.0
+    private val NUTRITION_KEYS = setOf(
+        "name", "rawGrams", "cookedGrams", "calories", "protein", "fat", "carbs", "notes"
+    )
 
-    private val DISH_LIST_KEYS = listOf("dishes", "blyuda", "meals", "plates", "foods", "results")
-    private val DISH_NAME_KEYS = listOf("name", "dish", "dishName", "title", "label")
-    private val INGREDIENT_LIST_KEYS = listOf("ingredients", "items", "products", "components")
-    private val INGREDIENT_NAME_KEYS = listOf("name", "title", "product", "ingredient")
+    /** Kept only for source compatibility with older parser callers. */
+    class MalformedResponse : AiPipelineException(AiPipelineError.MalformedJson)
 
-    class MalformedResponse(message: String) : IllegalArgumentException(message)
+    enum class NutritionWeightPolicy { USER_INPUT_ONLY, PHOTO_ESTIMATE }
 
-    /**
-     * Multi-dish recognition: one photo can hold several visually separate dishes.
-     *
-     * Accepts the current contract `{"dishes":[{name, confidence, ingredients:[{name, confidence,
-     * visibleQuantity}]}]}`, a bare array of those objects, and the legacy
-     * `{"dish":"...","ingredients":["..."]}` object, which becomes a single-element list.
-     * Empty dishes and empty ingredients are dropped; ids are always unique.
-     */
     fun parseDishes(raw: String): List<RecognizedDish> {
-        val element = parsePayload(raw)
+        val root = extractPayload(raw) as? JsonObject ?: fail(AiPipelineError.WrongSchema)
+        requireExactlyKeys(root, setOf("dishes"))
+        val dishes = requiredArray(root, "dishes")
+        if (dishes.size > MAX_DISHES) fail(AiPipelineError.InvalidRange)
 
-        val array: JsonArray? = when (element) {
-            is JsonArray -> element
-            is JsonObject -> DISH_LIST_KEYS.firstNotNullOfOrNull { key -> element[key] as? JsonArray }
-            else -> null
+        val seenDishes = mutableSetOf<String>()
+        return dishes.mapIndexed { dishIndex, value ->
+            val dish = value as? JsonObject ?: fail(AiPipelineError.WrongSchema)
+            requireExactlyKeys(dish, setOf("name", "confidence", "ingredients"))
+            val name = requiredText(dish, "name")
+            val normalizedName = name.normalized()
+            if (!seenDishes.add(normalizedName)) fail(AiPipelineError.DuplicateItem)
+            val confidence = requiredNumber(dish, "confidence", 0.0, 1.0).toFloat()
+            val ingredients = requiredArray(dish, "ingredients")
+            if (ingredients.size > MAX_INGREDIENTS) fail(AiPipelineError.InvalidRange)
+
+            val seenIngredients = mutableSetOf<String>()
+            val parsedIngredients = ingredients.mapIndexed { ingredientIndex, item ->
+                val ingredient = item as? JsonObject ?: fail(AiPipelineError.WrongSchema)
+                requireExactlyKeys(ingredient, setOf("name", "confidence", "visibleQuantity"))
+                val ingredientName = requiredText(ingredient, "name")
+                if (!seenIngredients.add(ingredientName.normalized())) fail(AiPipelineError.DuplicateItem)
+                val ingredientConfidence = requiredNumber(ingredient, "confidence", 0.0, 1.0).toFloat()
+                if (ingredient["visibleQuantity"] !is kotlinx.serialization.json.JsonNull) {
+                    fail(AiPipelineError.InvalidRange)
+                }
+                RecognizedIngredient(
+                    name = ingredientName,
+                    id = stableId("ingredient", dishIndex * MAX_INGREDIENTS + ingredientIndex, ingredientName),
+                    confidence = ingredientConfidence,
+                    visibleQuantityGrams = null
+                )
+            }
+            RecognizedDish(name, parsedIngredients, confidence, stableId("dish", dishIndex, name))
         }
-
-        if (array != null) {
-            // A bare array of strings is a dish list without ingredients, not an error.
-            val dishes = array.mapNotNull { entry -> entry.toDishOrNull() }
-            if (dishes.isNotEmpty()) return dishes
-            // {"dishes":[]} plus a legacy dish field is possible; fall through to the single object.
-        }
-
-        val obj = element as? JsonObject ?: return emptyList()
-        val single = parseSingleDish(obj)
-        return if (single.dishName.isBlank() && single.ingredients.isEmpty()) emptyList() else listOf(single)
     }
 
-    /**
-     * Legacy single-dish entry point, kept for the old contract and for callers that only
-     * care about the first dish. Never throws on an empty result: a blank name becomes a
-     * placeholder so the user can rename it.
-     */
-    fun parseDish(raw: String): RecognizedDish {
-        val element = parsePayload(raw)
-        val obj = when (element) {
-            is JsonObject -> element
-            is JsonArray -> element.firstNotNullOfOrNull { it as? JsonObject }
-                ?: throw MalformedResponse("\u041e\u0442\u0432\u0435\u0442 \u043d\u0435 \u044f\u0432\u043b\u044f\u0435\u0442\u0441\u044f JSON-\u043e\u0431\u044a\u0435\u043a\u0442\u043e\u043c"
-            )
-            else -> throw MalformedResponse("\u041e\u0442\u0432\u0435\u0442 \u043d\u0435 \u044f\u0432\u043b\u044f\u0435\u0442\u0441\u044f JSON-\u043e\u0431\u044a\u0435\u043a\u0442\u043e\u043c")
+    /** Legacy overload. Application flows should provide confirmed names for identity validation. */
+    fun parseNutrition(raw: String): List<EstimatedIngredient> =
+        parseNutrition(raw, confirmedNames = null, weightPolicy = NutritionWeightPolicy.PHOTO_ESTIMATE)
+
+    fun parseNutrition(
+        raw: String,
+        confirmedNames: List<String>?,
+        weightPolicy: NutritionWeightPolicy
+    ): List<EstimatedIngredient> {
+        val array = extractPayload(raw) as? JsonArray ?: fail(AiPipelineError.WrongSchema)
+        if (array.isEmpty()) fail(AiPipelineError.EmptyResponse)
+        if (array.size > MAX_INGREDIENTS) fail(AiPipelineError.InvalidRange)
+
+        val expected = confirmedNames?.map(String::trim)
+        if (expected != null) {
+            if (expected.any { it.isEmpty() || it.length > MAX_NAME_LENGTH }) fail(AiPipelineError.WrongSchema)
+            if (array.size != expected.size) fail(AiPipelineError.WrongItemCount)
         }
-        val nested = DISH_LIST_KEYS.firstNotNullOfOrNull { key -> obj[key] as? JsonArray }
-            ?.firstNotNullOfOrNull { it.toDishOrNull() }
-        if (nested != null) return nested
-        val dish = parseSingleDish(obj)
-        return dish.copy(dishName = dish.dishName.ifBlank { "\u0411\u043b\u044e\u0434\u043e" })
-    }
 
-    fun parseNutrition(raw: String): List<EstimatedIngredient> {
-        val array = json.parseToJsonElement(extractJsonArray(raw)) as? JsonArray
-            ?: throw MalformedResponse("\u041e\u0442\u0432\u0435\u0442 \u043d\u0435 \u044f\u0432\u043b\u044f\u0435\u0442\u0441\u044f JSON-\u043c\u0430\u0441\u0441\u0438\u0432\u043e\u043c")
+        val seenNames = mutableSetOf<String>()
+        return array.mapIndexed { index, item ->
+            val value = item as? JsonObject ?: fail(AiPipelineError.WrongSchema)
+            requireExactlyKeys(value, NUTRITION_KEYS)
+            val name = requiredText(value, "name")
+            if (!seenNames.add(name.normalized())) fail(AiPipelineError.DuplicateItem)
+            if (expected != null && name != expected[index]) fail(AiPipelineError.RenamedConfirmedItem)
 
-        return array.mapNotNull { element ->
-            val obj = element as? JsonObject ?: return@mapNotNull null
-            val name = (obj["name"] ?: obj["title"]).asText()?.trim().orEmpty()
-            if (name.isBlank()) return@mapNotNull null
-
-            val cooked = obj["cookedGrams"].asFloat(0f)
-            val rawGrams = obj["rawGrams"].asFloat(0f)
+            val rawGrams = requiredNumber(value, "rawGrams", 0.0, MAX_GRAMS).toFloat()
+            val cookedGrams = requiredNumber(value, "cookedGrams", 0.0, MAX_GRAMS).toFloat()
+            if (weightPolicy == NutritionWeightPolicy.USER_INPUT_ONLY && (rawGrams != 0f || cookedGrams != 0f)) {
+                fail(AiPipelineError.InvalidRange)
+            }
             EstimatedIngredient(
                 name = name,
-                rawGrams = if (rawGrams > 0f) rawGrams else cooked,
-                cookedGrams = if (cooked > 0f) cooked else rawGrams,
-                caloriesPer100g = obj["calories"].asFloat(0f).coerceIn(0f, 900f),
-                proteinPer100g = obj["protein"].asFloat(0f).coerceIn(0f, 100f),
-                fatPer100g = obj["fat"].asFloat(0f).coerceIn(0f, 100f),
-                carbsPer100g = obj["carbs"].asFloat(0f).coerceIn(0f, 100f),
-                notes = obj["notes"].asText()?.trim().orEmpty()
+                rawGrams = rawGrams,
+                cookedGrams = cookedGrams,
+                caloriesPer100g = requiredNumber(value, "calories", 0.0, 900.0).toFloat(),
+                proteinPer100g = requiredNumber(value, "protein", 0.0, 100.0).toFloat(),
+                fatPer100g = requiredNumber(value, "fat", 0.0, 100.0).toFloat(),
+                carbsPer100g = requiredNumber(value, "carbs", 0.0, 100.0).toFloat(),
+                notes = requiredNotes(value),
+                id = stableId("nutrition", index, name)
             )
         }
     }
 
-    // ---- Dish helpers ----
-
-    private fun parseSingleDish(obj: JsonObject): RecognizedDish {
-        val name = DISH_NAME_KEYS.firstNotNullOfOrNull { key -> obj[key].asText() }.orEmpty()
-        val rawItems = INGREDIENT_LIST_KEYS.firstNotNullOfOrNull { key -> obj[key] as? JsonArray }
-            ?: JsonArray(emptyList())
-        return RecognizedDish(
-            dishName = name.trim(),
-            ingredients = rawItems.toIngredients(),
-            confidence = obj.confidence()
-        )
-    }
-
-    /** One entry of a dishes array: either an object, or just the dish name as a string. */
-    private fun JsonElement.toDishOrNull(): RecognizedDish? {
-        val dish = when (this) {
-            is JsonObject -> parseSingleDish(this)
-            is JsonPrimitive -> RecognizedDish(contentOrNull?.trim().orEmpty(), emptyList())
-            else -> return null
-        }
-        if (dish.dishName.isBlank() && dish.ingredients.isEmpty()) return null
-        return dish.copy(
-            dishName = dish.dishName.ifBlank { RecognizedDish.UNKNOWN_LABEL }
-        )
-    }
-
-    private fun JsonArray.toIngredients(): List<RecognizedIngredient> {
-        val seen = mutableSetOf<String>()
-        return mapNotNull { element ->
-            when (element) {
-                is JsonObject -> {
-                    val name = INGREDIENT_NAME_KEYS.firstNotNullOfOrNull { key -> element[key].asText() }
-                        ?.trim()
-                        ?.takeIf { it.isNotBlank() }
-                        ?: return@mapNotNull null
-                    RecognizedIngredient(
-                        name = name,
-                        confidence = element.confidence(),
-                        visibleQuantityGrams = (element["visibleQuantity"] ?: element["grams"])
-                            .asFloat(0f)
-                            .takeIf { it > 0f }
-                    )
-                }
-
-                else -> element.asText()?.trim()?.takeIf { it.isNotBlank() }
-                    ?.let { RecognizedIngredient(it) }
+    /** Finds the first balanced JSON object/array without being confused by braces in strings. */
+    private fun extractPayload(raw: String): JsonElement {
+        val text = normaliseOuterFormatting(raw)
+        if (text.isBlank()) fail(AiPipelineError.EmptyResponse)
+        var sawOpening = false
+        var sawIncomplete = false
+        var sawMalformed = false
+        text.indices.forEach { start ->
+            if (text[start] !in charArrayOf('{', '[')) return@forEach
+            sawOpening = true
+            val candidate = balancedCandidate(text, start)
+            if (candidate == null) {
+                sawIncomplete = true
+            } else {
+                val decoded = runCatching { json.parseToJsonElement(candidate) }.getOrNull()
+                if (decoded != null) return decoded
+                sawMalformed = true
             }
-        }.filter { ingredient -> seen.add(ingredient.name.lowercase()) }
-    }
-
-    /** Models report confidence as 0..1 or as a percentage; both are normalised to 0..1. */
-    private fun JsonObject.confidence(): Float? {
-        val raw = (this["confidence"] ?: this["probability"] ?: this["certainty"]) ?: return null
-        val value = raw.asFloat(-1f)
-        if (value < 0f) return null
-        val normalized = if (value > 1f) value / 100f else value
-        return normalized.coerceIn(0f, 1f)
-    }
-
-    // ---- Extraction helpers ----
-
-    /** Parses the first JSON object or array found in the answer, ignoring prose and fences. */
-    private fun parsePayload(raw: String): JsonElement {
-        val stripped = stripFences(raw)
-        val objStart = stripped.indexOf('{')
-        val arrStart = stripped.indexOf('[')
-        val candidates = buildList {
-            if (arrStart >= 0 && (objStart < 0 || arrStart < objStart)) add(extractJsonArray(stripped))
-            if (objStart >= 0) add(extract(stripped, '{', '}', "\u043e\u0431\u044a\u0435\u043a\u0442"))
-            if (arrStart >= 0 && objStart >= 0 && arrStart > objStart) add(extractJsonArray(stripped))
         }
-        if (candidates.isEmpty()) {
-            throw MalformedResponse("\u0412 \u043e\u0442\u0432\u0435\u0442\u0435 \u043c\u043e\u0434\u0435\u043b\u0438 \u043d\u0435\u0442 JSON")
+        when {
+            !sawOpening -> fail(AiPipelineError.JsonNotFound)
+            sawIncomplete && !sawMalformed -> fail(AiPipelineError.TruncatedResponse)
+            else -> fail(AiPipelineError.MalformedJson)
         }
-        candidates.forEach { candidate ->
-            runCatching { json.parseToJsonElement(candidate) }.getOrNull()?.let { return it }
+    }
+
+    private fun balancedCandidate(text: String, start: Int): String? {
+        val closers = ArrayDeque<Char>()
+        var inString = false
+        var escaped = false
+        for (index in start until text.length) {
+            val character = text[index]
+            if (inString) {
+                when {
+                    escaped -> escaped = false
+                    character == '\\' -> escaped = true
+                    character == '"' -> inString = false
+                }
+                continue
+            }
+            when (character) {
+                '"' -> inString = true
+                '{' -> closers.addLast('}')
+                '[' -> closers.addLast(']')
+                '}', ']' -> {
+                    if (closers.isEmpty() || closers.removeLast() != character) return null
+                    if (closers.isEmpty()) return text.substring(start, index + 1)
+                }
+            }
         }
-        throw MalformedResponse("\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0440\u0430\u0437\u043e\u0431\u0440\u0430\u0442\u044c JSON \u0438\u0437 \u043e\u0442\u0432\u0435\u0442\u0430 \u043c\u043e\u0434\u0435\u043b\u0438")
+        return null
     }
 
-    fun extractJsonObject(text: String): String = extract(text, '{', '}', "\u043e\u0431\u044a\u0435\u043a\u0442")
-
-    fun extractJsonArray(text: String): String {
-        val stripped = stripFences(text)
-        val start = stripped.indexOf('[')
-        val end = stripped.lastIndexOf(']')
-        if (start >= 0 && end > start) return stripped.substring(start, end + 1)
-
-        // Some models answer {"items": [...]}: dig the first array out of the object.
-        val objStart = stripped.indexOf('{')
-        val objEnd = stripped.lastIndexOf('}')
-        if (objStart >= 0 && objEnd > objStart) {
-            val obj = runCatching {
-                json.parseToJsonElement(stripped.substring(objStart, objEnd + 1)) as? JsonObject
-            }.getOrNull()
-            obj?.values?.firstNotNullOfOrNull { it as? JsonArray }?.let { return it.toString() }
-        }
-        throw MalformedResponse("\u0412 \u043e\u0442\u0432\u0435\u0442\u0435 \u043c\u043e\u0434\u0435\u043b\u0438 \u043d\u0435\u0442 JSON-\u043c\u0430\u0441\u0441\u0438\u0432\u0430")
+    private fun normaliseOuterFormatting(raw: String): String {
+        var text = raw.removePrefix("\uFEFF").trim()
+        if (!text.startsWith("```")) return text
+        val firstLineEnd = text.indexOf('\n')
+        if (firstLineEnd < 0) fail(AiPipelineError.TruncatedResponse)
+        val fence = text.substring(0, firstLineEnd).trim().lowercase()
+        if (fence !in setOf("```", "```json", "```jsonc", "```javascript")) return text
+        text = text.substring(firstLineEnd + 1)
+        val closingFence = text.lastIndexOf("```")
+        if (closingFence < 0) fail(AiPipelineError.TruncatedResponse)
+        if (text.substring(closingFence + 3).isNotBlank()) return text
+        return text.substring(0, closingFence).trim()
     }
 
-    private fun extract(text: String, open: Char, close: Char, what: String): String {
-        val stripped = stripFences(text)
-        val start = stripped.indexOf(open)
-        val end = stripped.lastIndexOf(close)
-        if (start < 0 || end <= start) throw MalformedResponse("\u0412 \u043e\u0442\u0432\u0435\u0442\u0435 \u043c\u043e\u0434\u0435\u043b\u0438 \u043d\u0435\u0442 JSON-" + what)
-        return stripped.substring(start, end + 1)
+    private fun requiredArray(source: JsonObject, key: String): JsonArray =
+        source[key] as? JsonArray ?: fail(if (source.containsKey(key)) AiPipelineError.WrongSchema else AiPipelineError.MissingRequiredField)
+
+    private fun requiredText(source: JsonObject, key: String): String {
+        val primitive = source[key] as? JsonPrimitive
+            ?: fail(if (source.containsKey(key)) AiPipelineError.WrongSchema else AiPipelineError.MissingRequiredField)
+        if (!primitive.isString) fail(AiPipelineError.WrongSchema)
+        val text = primitive.contentOrNull?.trim() ?: fail(AiPipelineError.WrongSchema)
+        if (text.isEmpty()) fail(AiPipelineError.MissingRequiredField)
+        if (text.length > MAX_NAME_LENGTH) fail(AiPipelineError.InvalidRange)
+        return text
     }
 
-    private fun stripFences(text: String): String {
-        var s = text.trim()
-        if (s.startsWith("```")) {
-            s = s.removePrefix("```json")
-                .removePrefix("```JSON")
-                .removePrefix("```kotlin")
-                .removePrefix("```")
-                .trim()
-            if (s.endsWith("```")) s = s.removeSuffix("```").trim()
-        }
-        return s
+    private fun requiredNotes(source: JsonObject): String {
+        val primitive = source["notes"] as? JsonPrimitive
+            ?: fail(if (source.containsKey("notes")) AiPipelineError.WrongSchema else AiPipelineError.MissingRequiredField)
+        if (!primitive.isString) fail(AiPipelineError.WrongSchema)
+        val notes = primitive.contentOrNull ?: fail(AiPipelineError.WrongSchema)
+        if (notes.length > MAX_NOTE_LENGTH) fail(AiPipelineError.InvalidRange)
+        return notes.trim()
     }
 
-    private fun JsonElement?.asText(): String? {
-        val primitive = this as? JsonPrimitive ?: return null
-        return primitive.contentOrNull
+    private fun requiredNumber(source: JsonObject, key: String, min: Double, max: Double): Double {
+        val primitive = source[key] as? JsonPrimitive
+            ?: fail(if (source.containsKey(key)) AiPipelineError.WrongSchema else AiPipelineError.MissingRequiredField)
+        if (primitive.isString) fail(AiPipelineError.InvalidNumber)
+        val number = primitive.doubleOrNull ?: fail(AiPipelineError.InvalidNumber)
+        if (!number.isFinite()) fail(AiPipelineError.InvalidNumber)
+        if (number !in min..max) fail(AiPipelineError.InvalidRange)
+        return number
     }
 
-    private fun JsonElement?.asFloat(default: Float): Float {
-        val primitive = this as? JsonPrimitive ?: return default
-        primitive.floatOrNull?.let { return it }
-        val content = primitive.contentOrNull ?: return default
-        val match = Regex("-?\\d+(?:\\.\\d+)?").find(content.replace(',', '.')) ?: return default
-        return match.value.toFloatOrNull() ?: default
+    private fun requireExactlyKeys(source: JsonObject, expected: Set<String>) {
+        if (source.keys != expected) fail(AiPipelineError.WrongSchema)
     }
+
+    private fun String.normalized(): String = trim().lowercase()
+
+    private fun stableId(prefix: String, index: Int, value: String): String =
+        "$prefix-$index-${value.normalized().hashCode().toUInt().toString(16)}"
+
+    private fun fail(error: AiPipelineError): Nothing = throw AiPipelineException(error)
 }

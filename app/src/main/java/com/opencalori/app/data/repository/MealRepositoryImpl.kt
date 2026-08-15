@@ -1,5 +1,7 @@
 package com.opencalori.app.data.repository
 
+import androidx.room.withTransaction
+import com.opencalori.app.data.local.AppDatabase
 import com.opencalori.app.data.local.dao.MealDao
 import com.opencalori.app.data.local.dao.WeightDao
 import com.opencalori.app.data.local.entity.FoodItemEntity
@@ -8,6 +10,7 @@ import com.opencalori.app.domain.model.FoodItem
 import com.opencalori.app.domain.model.Meal
 import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.domain.model.WeightEntry
+import com.opencalori.app.domain.repository.MealDishItems
 import com.opencalori.app.domain.repository.MealRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -19,6 +22,7 @@ import javax.inject.Singleton
 
 @Singleton
 class MealRepositoryImpl @Inject constructor(
+    private val database: AppDatabase,
     private val mealDao: MealDao,
     private val weightDao: WeightDao
 ) : MealRepository {
@@ -62,6 +66,20 @@ class MealRepositoryImpl @Inject constructor(
                 createdAt = createdAt,
                 items = entities
             )
+        }
+    }
+
+    override suspend fun addDishItems(
+        epochDay: Long,
+        mealType: MealType,
+        dishes: List<MealDishItems>
+    ) {
+        val nonEmpty = dishes.filter { it.items.isNotEmpty() }
+        if (nonEmpty.isEmpty()) return
+        database.withTransaction {
+            nonEmpty.forEach { dish ->
+                addItems(epochDay, mealType, dish.items, dish.dishName)
+            }
         }
     }
 

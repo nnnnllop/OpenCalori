@@ -178,7 +178,7 @@ fun ScannerScreen(
 
                 ScannerStage.ERROR -> ErrorStage(
                     message = state.error,
-                    canRetry = state.photo != null,
+                    canRetry = state.photoBase64 != null && state.failedAiStage != null && state.manualRetryAvailable,
                     onRetry = viewModel::retry,
                     onRetake = viewModel::retake,
                     onOpenSettings = onOpenSettings

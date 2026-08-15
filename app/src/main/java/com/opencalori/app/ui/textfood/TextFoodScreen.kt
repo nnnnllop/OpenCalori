@@ -101,7 +101,9 @@ fun TextFoodScreen(
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             state.error?.let { message ->
                 Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = viewModel::retry) { Text("Повторить") }
+                if (state.manualRetryAvailable) {
+                    TextButton(onClick = viewModel::retry) { Text("Повторить") }
+                }
             }
 
             when (state.stage) {
