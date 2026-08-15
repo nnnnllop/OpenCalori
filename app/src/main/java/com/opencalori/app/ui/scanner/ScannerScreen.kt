@@ -165,7 +165,8 @@ fun ScannerScreen(
                     message = state.error,
                     canRetry = state.photo != null,
                     onRetry = viewModel::retry,
-                    onRetake = viewModel::retake
+                    onRetake = viewModel::retake,
+                    onOpenSettings = onOpenSettings
                 )
 
                 ScannerStage.SAVED -> Box(Modifier.fillMaxSize())
@@ -358,7 +359,11 @@ private fun CameraCaptureView(
                         ImageCapture.FLASH_MODE_AUTO -> Icons.Default.FlashAuto
                         else -> Icons.Default.FlashOff
                     },
-                    contentDescription = "Вспышка"
+                    contentDescription = when (flashMode) {
+                        ImageCapture.FLASH_MODE_ON -> "\u0412\u0441\u043f\u044b\u0448\u043a\u0430 \u0432\u043a\u043b\u044e\u0447\u0435\u043d\u0430. \u041d\u0430\u0436\u043c\u0438\u0442\u0435, \u0447\u0442\u043e\u0431\u044b \u0432\u044b\u043a\u043b\u044e\u0447\u0438\u0442\u044c"
+                        ImageCapture.FLASH_MODE_AUTO -> "\u0410\u0432\u0442\u043e\u0432\u0441\u043f\u044b\u0448\u043a\u0430. \u041d\u0430\u0436\u043c\u0438\u0442\u0435, \u0447\u0442\u043e\u0431\u044b \u0432\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0432\u0441\u043f\u044b\u0448\u043a\u0443"
+                        else -> "\u0412\u0441\u043f\u044b\u0448\u043a\u0430 \u0432\u044b\u043a\u043b\u044e\u0447\u0435\u043d\u0430. \u041d\u0430\u0436\u043c\u0438\u0442\u0435, \u0447\u0442\u043e\u0431\u044b \u0432\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0430\u0432\u0442\u043e\u0432\u0441\u043f\u044b\u0448\u043a\u0443"
+                    }
                 )
             }
         }
@@ -518,7 +523,8 @@ private fun ErrorStage(
     message: String?,
     canRetry: Boolean,
     onRetry: () -> Unit,
-    onRetake: () -> Unit
+    onRetake: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
     Column(
         Modifier
@@ -543,7 +549,13 @@ private fun ErrorStage(
             }
             Spacer(Modifier.height(8.dp))
         }
-        OutlinedButton(onClick = onRetake) { Text("Сделать новое фото") }
+        OutlinedButton(onClick = onOpenSettings) {
+            Icon(Icons.Default.Key, null)
+            Spacer(Modifier.size(8.dp))
+            Text("\u041d\u0430\u0441\u0442\u0440\u043e\u0438\u0442\u044c \u0418\u0418")
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = onRetake) { Text("\u0421\u0434\u0435\u043b\u0430\u0442\u044c \u043d\u043e\u0432\u043e\u0435 \u0444\u043e\u0442\u043e") }
     }
 }
 
