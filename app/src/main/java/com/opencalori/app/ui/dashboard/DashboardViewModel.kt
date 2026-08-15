@@ -56,6 +56,7 @@ data class DashboardUiState(
 private data class UndoBuffer(
     val epochDay: Long,
     val mealType: MealType,
+    val dishName: String?,
     val items: List<FoodItem>
 )
 
@@ -120,16 +121,16 @@ class DashboardViewModel @Inject constructor(
 
     fun deleteMeal(meal: Meal) {
         repeatUndo = null
-        undoBuffer = UndoBuffer(meal.dateEpochDay, meal.mealType, meal.items)
+        undoBuffer = UndoBuffer(meal.dateEpochDay, meal.mealType, meal.dishName, meal.items)
         viewModelScope.launch {
             mealRepository.deleteMeal(meal.id)
-            _uiState.update { it.copy(message = "Удалено: ${meal.mealType.label}", canUndo = true) }
+            _uiState.update { it.copy(message = "Удалено: ${meal.displayName}", canUndo = true) }
         }
     }
 
     fun deleteFoodItem(meal: Meal, item: FoodItem) {
         repeatUndo = null
-        undoBuffer = UndoBuffer(meal.dateEpochDay, meal.mealType, listOf(item))
+        undoBuffer = UndoBuffer(meal.dateEpochDay, meal.mealType, meal.dishName, listOf(item))
         viewModelScope.launch {
             mealRepository.deleteFoodItem(item.id)
             _uiState.update { it.copy(message = "Удалено: ${item.name}", canUndo = true) }
@@ -141,7 +142,7 @@ class DashboardViewModel @Inject constructor(
         if (deleted != null) {
             undoBuffer = null
             viewModelScope.launch {
-                mealRepository.addItems(deleted.epochDay, deleted.mealType, deleted.items)
+                mealRepository.addItems(deleted.epochDay, deleted.mealType, deleted.items, deleted.dishName)
                 _uiState.update { it.copy(message = null, canUndo = false) }
             }
             return
@@ -151,7 +152,7 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             repeat.createdMealIds.distinct().forEach { mealId -> mealRepository.deleteMeal(mealId) }
             repeat.originalMeals.forEach { meal ->
-                if (meal.items.isNotEmpty()) mealRepository.addItems(meal.dateEpochDay, meal.mealType, meal.items)
+                if (meal.items.isNotEmpty()) mealRepository.addItems(meal.dateEpochDay, meal.mealType, meal.items, meal.dishName)
             }
             _uiState.update { it.copy(message = null, canUndo = false) }
         }
@@ -203,7 +204,7 @@ class DashboardViewModel @Inject constructor(
             originalMeals.forEach { mealRepository.deleteMeal(it.id) }
             val createdIds = sourceMeals.mapNotNull { meal ->
                 if (meal.items.isEmpty()) null
-                else mealRepository.addItems(target.toEpochDay(), meal.mealType, meal.items)
+                else mealRepository.addItems(target.toEpochDay(), meal.mealType, meal.items, meal.dishName)
             }
             undoBuffer = null
             repeatUndo = RepeatUndo(originalMeals, createdIds)

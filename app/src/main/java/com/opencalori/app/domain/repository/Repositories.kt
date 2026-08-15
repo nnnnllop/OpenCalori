@@ -22,11 +22,16 @@ interface MealRepository {
     fun getMealsForDay(epochDay: Long): Flow<List<Meal>>
 
     /**
-     * Adds items to the diary. If a meal of the same type already exists on that day,
-     * the items are appended to it instead of creating a duplicate card.
-     * Returns the id of the meal the items ended up in.
+     * Adds items to the diary. Manual entries are appended to the day/type group.
+     * A non-blank [dishName] keeps a separately titled dish entry so its ingredients can
+     * be reviewed only when the user opens that dish.
      */
-    suspend fun addItems(epochDay: Long, mealType: MealType, items: List<FoodItem>): Long
+    suspend fun addItems(
+        epochDay: Long,
+        mealType: MealType,
+        items: List<FoodItem>,
+        dishName: String? = null
+    ): Long
 
     suspend fun deleteMeal(mealId: Long)
 

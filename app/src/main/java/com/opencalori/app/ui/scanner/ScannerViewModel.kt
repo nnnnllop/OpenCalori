@@ -10,6 +10,7 @@ import com.opencalori.app.data.repository.PhotoNutritionResolver
 import com.opencalori.app.domain.model.Dish
 import com.opencalori.app.domain.model.EstimatedIngredient
 import com.opencalori.app.domain.model.MealType
+import com.opencalori.app.domain.model.NutritionSourceMode
 import com.opencalori.app.domain.model.RecognizedDish
 import com.opencalori.app.domain.model.RecognizedIngredient
 import com.opencalori.app.domain.model.UserProfile
@@ -65,6 +66,7 @@ data class ScannerUiState(
     val targetDate: LocalDate = LocalDate.now(),
     val error: String? = null,
     val gramsEditMode: GramsEditMode = GramsEditMode.COOKED,
+    val nutritionSourceMode: NutritionSourceMode = NutritionSourceMode.AI_ONLY,
     val saving: Boolean = false
 ) {
     val isAnalyzing: Boolean
@@ -90,6 +92,7 @@ data class ScannerUiState(
             targetDate == other.targetDate &&
             error == other.error &&
             gramsEditMode == other.gramsEditMode &&
+            nutritionSourceMode == other.nutritionSourceMode &&
             saving == other.saving
     }
 
@@ -105,6 +108,7 @@ data class ScannerUiState(
         result = 31 * result + targetDate.hashCode()
         result = 31 * result + (error?.hashCode() ?: 0)
         result = 31 * result + gramsEditMode.hashCode()
+        result = 31 * result + nutritionSourceMode.hashCode()
         result = 31 * result + saving.hashCode()
         return result
     }
@@ -131,6 +135,11 @@ class ScannerViewModel @Inject constructor(
     private var analysisJob: Job? = null
 
     init {
+        viewModelScope.launch {
+            userPrefs.profile.collect { profile ->
+                _uiState.update { it.copy(nutritionSourceMode = profile.nutritionSourceMode) }
+            }
+        }
         viewModelScope.launch {
             if (!apiConfigStore.current().isConfigured) {
                 _uiState.update { it.copy(stage = ScannerStage.NOT_CONFIGURED) }
@@ -261,11 +270,11 @@ class ScannerViewModel @Inject constructor(
     private suspend fun runStage2(photo: String, dishName: String, items: List<String>) {
         _uiState.update { it.copy(stage = ScannerStage.ANALYZING_2, error = null) }
 
-        // A configured provider is authoritative for the photo flow: recognition and nutrition
-        // estimation both come from the AI. The local catalogue remains a safe fallback only
-        // when the provider is unavailable, and every repository failure is converted into a UI
-        // error instead of escaping the ViewModel coroutine and closing the application.
-        if (apiConfigStore.current().isConfigured) {
+        // Recognition always uses the configured vision provider. The nutrition source below is
+        // selected explicitly by the user: AI-only estimates macros with the model, while local
+        // and hybrid resolve macros through the local catalogue.
+        val nutritionMode = profile().nutritionSourceMode
+        if (nutritionMode == NutritionSourceMode.AI_ONLY) {
             val aiEstimate = try {
                 aiRepository.estimateNutrition(photo, dishName, items)
             } catch (cancelled: CancellationException) {
@@ -388,7 +397,8 @@ class ScannerViewModel @Inject constructor(
             mealRepository.addItems(
                 epochDay = targetEpochDay,
                 mealType = state.mealType,
-                items = state.estimated.map { it.toFoodItem() }
+                items = state.estimated.map { it.toFoodItem() },
+                dishName = state.dish?.dishName
             )
             _uiState.update { it.copy(stage = ScannerStage.SAVED, saving = false) }
         }

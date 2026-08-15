@@ -153,7 +153,7 @@ class BackupRepository @Inject constructor(
                 }
             }
             if (accepted.isNotEmpty()) {
-                mealRepository.addItems(meal.dateEpochDay, meal.mealType, accepted)
+                mealRepository.addItems(meal.dateEpochDay, meal.mealType, accepted, meal.dishName)
                 addedMeals += 1
                 addedItems += accepted.size
             }
@@ -191,7 +191,7 @@ class BackupRepository @Inject constructor(
     private suspend fun restoreSnapshot(snapshot: BackupSnapshot): ImportSummary {
         withContext(io) { database.clearAllTables() }
         snapshot.meals.forEach { meal ->
-            if (meal.items.isNotEmpty()) mealRepository.addItems(meal.dateEpochDay, meal.mealType, meal.items)
+            if (meal.items.isNotEmpty()) mealRepository.addItems(meal.dateEpochDay, meal.mealType, meal.items, meal.dishName)
         }
         snapshot.weights.forEach { weight -> mealRepository.addWeight(weight.dateEpochDay, weight.weightKg) }
         snapshot.customProducts.forEach { productRepository.addCustomProduct(it) }

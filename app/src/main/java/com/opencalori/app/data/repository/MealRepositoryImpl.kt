@@ -37,14 +37,32 @@ class MealRepositoryImpl @Inject constructor(
             }
         }
 
-    override suspend fun addItems(epochDay: Long, mealType: MealType, items: List<FoodItem>): Long {
+    override suspend fun addItems(
+        epochDay: Long,
+        mealType: MealType,
+        items: List<FoodItem>,
+        dishName: String?
+    ): Long {
         if (items.isEmpty()) return -1
-        return mealDao.addItemsToMeal(
-            epochDay = epochDay,
-            mealType = mealType.name,
-            createdAt = System.currentTimeMillis(),
-            items = items.map { it.toEntity(0) }
-        )
+        val title = dishName?.trim()?.takeIf { it.isNotEmpty() }
+        val createdAt = System.currentTimeMillis()
+        val entities = items.map { it.toEntity(0) }
+        return if (title == null) {
+            mealDao.addItemsToMeal(
+                epochDay = epochDay,
+                mealType = mealType.name,
+                createdAt = createdAt,
+                items = entities
+            )
+        } else {
+            mealDao.addItemsToDish(
+                epochDay = epochDay,
+                mealType = mealType.name,
+                dishName = title,
+                createdAt = createdAt,
+                items = entities
+            )
+        }
     }
 
     override suspend fun deleteMeal(mealId: Long) = mealDao.deleteMeal(mealId)
@@ -85,6 +103,7 @@ class MealRepositoryImpl @Inject constructor(
         id = id,
         dateEpochDay = dateEpochDay,
         mealType = runCatching { MealType.valueOf(mealType) }.getOrDefault(MealType.SNACK),
+        dishName = dishName,
         items = items.map { it.toDomain() },
         createdAt = createdAt
     )

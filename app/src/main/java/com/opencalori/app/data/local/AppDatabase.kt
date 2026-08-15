@@ -19,7 +19,7 @@ import com.opencalori.app.data.local.entity.WeightEntryEntity
         WeightEntryEntity::class,
         CustomProductEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -87,6 +87,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2)
+        /** v2 -> v3: preserves existing entries while allowing scan results to retain a dish title. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `meals` ADD COLUMN `dishName` TEXT")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_meals_dateEpochDay_mealType_dishName` " +
+                        "ON `meals` (`dateEpochDay`, `mealType`, `dishName`)"
+                )
+            }
+        }
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
     }
 }

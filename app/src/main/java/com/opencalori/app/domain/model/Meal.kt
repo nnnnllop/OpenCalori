@@ -27,9 +27,12 @@ data class Meal(
     val id: Long = 0,
     val dateEpochDay: Long,        // LocalDate.toEpochDay()
     val mealType: MealType,
+    /** User-facing dish title for scans; null for legacy and manually grouped entries. */
+    val dishName: String? = null,
     val items: List<FoodItem> = emptyList(),
     val createdAt: Long = System.currentTimeMillis()
 ) {
+    val displayName: String get() = dishName?.takeIf { it.isNotBlank() } ?: mealType.label
     val totalCalories: Float get() = items.sumOf { it.calories.toDouble() }.toFloat()
     val totalProtein: Float get() = items.sumOf { it.protein.toDouble() }.toFloat()
     val totalFat: Float get() = items.sumOf { it.fat.toDouble() }.toFloat()

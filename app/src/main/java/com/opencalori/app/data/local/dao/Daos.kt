@@ -22,6 +22,8 @@ interface MealDao {
 
     @Query("SELECT * FROM meals WHERE dateEpochDay = :epochDay AND mealType = :mealType LIMIT 1")
     suspend fun findMeal(epochDay: Long, mealType: String): MealEntity?
+    @Query("SELECT * FROM meals WHERE dateEpochDay = :epochDay AND mealType = :mealType AND dishName = :dishName LIMIT 1")
+    suspend fun findMealByDishName(epochDay: Long, mealType: String, dishName: String): MealEntity?
 
     /**
      * Appends items to the meal of the given type on the given day, creating it only if
@@ -42,6 +44,27 @@ interface MealDao {
         return mealId
     }
 
+    /** Appends products to a named dish, preserving the dish as the primary diary entry. */
+    @Transaction
+    suspend fun addItemsToDish(
+        epochDay: Long,
+        mealType: String,
+        dishName: String,
+        createdAt: Long,
+        items: List<FoodItemEntity>
+    ): Long {
+        val existing = findMealByDishName(epochDay, mealType, dishName)
+        val mealId = existing?.id ?: insertMeal(
+            MealEntity(
+                dateEpochDay = epochDay,
+                mealType = mealType,
+                dishName = dishName,
+                createdAt = createdAt
+            )
+        )
+        insertFoodItems(items.map { it.copy(id = 0, mealId = mealId) })
+        return mealId
+    }
     @Query("DELETE FROM meals WHERE id = :mealId")
     suspend fun deleteMeal(mealId: Long)
 

@@ -29,13 +29,21 @@ class FakeMealRepository : MealRepository {
     override fun getMealsForDay(epochDay: Long): Flow<List<Meal>> =
         meals.map { all -> all.filter { it.dateEpochDay == epochDay } }
 
-    override suspend fun addItems(epochDay: Long, mealType: MealType, items: List<FoodItem>): Long {
+    override suspend fun addItems(
+        epochDay: Long,
+        mealType: MealType,
+        items: List<FoodItem>,
+        dishName: String?
+    ): Long {
         addCalls += Triple(epochDay, mealType, items)
         if (items.isEmpty()) return -1
 
         val stamped = items.map { it.copy(id = nextItemId++) }
         val current = meals.value.toMutableList()
-        val index = current.indexOfFirst { it.dateEpochDay == epochDay && it.mealType == mealType }
+        val title = dishName?.trim()?.takeIf { it.isNotEmpty() }
+        val index = current.indexOfFirst {
+            it.dateEpochDay == epochDay && it.mealType == mealType && it.dishName == title
+        }
 
         return if (index >= 0) {
             val existing = current[index]
@@ -47,6 +55,7 @@ class FakeMealRepository : MealRepository {
                 id = nextMealId++,
                 dateEpochDay = epochDay,
                 mealType = mealType,
+                dishName = title,
                 items = stamped
             )
             meals.value = current + meal

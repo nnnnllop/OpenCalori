@@ -1,4 +1,4 @@
-package com.opencalori.app.ui.scanner
+﻿package com.opencalori.app.ui.scanner
 
 import android.content.Intent
 import android.net.Uri
@@ -563,6 +563,16 @@ private fun ErrorStage(
 private fun ReviewDishStage(state: ScannerUiState, viewModel: ScannerViewModel) {
     var newItem by remember { mutableStateOf("") }
     val dish = state.dish ?: return
+    val nutritionSourceDescription = when (state.nutritionSourceMode) {
+        com.opencalori.app.domain.model.NutritionSourceMode.AI_ONLY -> "КБЖУ и граммовки оценит ИИ по фото и подтверждённому составу."
+        com.opencalori.app.domain.model.NutritionSourceMode.LOCAL_DATABASE -> "ИИ определил блюдо и состав, а КБЖУ будут взяты из локальной базы."
+        com.opencalori.app.domain.model.NutritionSourceMode.HYBRID -> "ИИ определил блюдо и состав, а КБЖУ будут сверены по локальной базе."
+    }
+    val nutritionAction = when (state.nutritionSourceMode) {
+        com.opencalori.app.domain.model.NutritionSourceMode.AI_ONLY -> "Рассчитать КБЖУ с ИИ"
+        com.opencalori.app.domain.model.NutritionSourceMode.LOCAL_DATABASE -> "Найти КБЖУ в локальной базе"
+        com.opencalori.app.domain.model.NutritionSourceMode.HYBRID -> "Сверить КБЖУ по базе"
+    }
 
     Column(
         Modifier
@@ -575,7 +585,7 @@ private fun ReviewDishStage(state: ScannerUiState, viewModel: ScannerViewModel) 
         Spacer(Modifier.height(12.dp))
         Text("\u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 блюдо и состав", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(
-            "\u0418\u0418 определил блюдо и список ингредиентов. КБЖУ будут взяты только из локальной базы.",
+            nutritionSourceDescription,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -658,7 +668,7 @@ private fun ReviewDishStage(state: ScannerUiState, viewModel: ScannerViewModel) 
             enabled = dish.ingredients.any { it.name.isNotBlank() },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("\u041f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c по локальной базе")
+            Text(nutritionAction)
         }
     }
 }

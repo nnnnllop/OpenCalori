@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,6 +21,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Key
@@ -115,12 +118,19 @@ fun DashboardScreen(
                 }
             )
         },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { addFoodSheetVisible = true },
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                text = { Text("Добавить еду") }
+            )
+        }
     ) { padding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 104.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
@@ -160,7 +170,7 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Приёмы пищи", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Блюда", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -179,22 +189,12 @@ fun DashboardScreen(
                 }
             } else {
                 items(state.meals, key = { it.id }) { meal ->
-                    MealCard(
+                    DishCard(
                         meal = meal,
                         onDeleteMeal = { viewModel.deleteMeal(meal) },
                         onDeleteItem = { item -> viewModel.deleteFoodItem(meal, item) },
                         onEditItem = { item -> editingItem = item }
                     )
-                }
-                item {
-                    Button(
-                        onClick = { addFoodSheetVisible = true },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Добавить еду")
-                    }
                 }
             }
         }
@@ -541,6 +541,119 @@ private fun FoodItemRow(
         }
     }
 }
+@Composable
+private fun DishCard(
+    meal: Meal,
+    onDeleteMeal: () -> Unit,
+    onDeleteItem: (FoodItem) -> Unit,
+    onEditItem: (FoodItem) -> Unit
+) {
+    var expanded by remember(meal.id) { mutableStateOf(false) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = AppShapes.Medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = meal.displayName,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = meal.mealType.label + " · " + meal.items.size + " " + productCountLabel(meal.items.size),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(
+                    text = meal.totalCalories.toInt().toString() + " ккал",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(onClick = { expanded = !expanded }) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (expanded) "Скрыть продукты" else "Показать продукты"
+                    )
+                }
+            }
+            if (expanded) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "Продукты",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                meal.items.forEach { item ->
+                    DishFoodItemRow(
+                        item = item,
+                        onEdit = { onEditItem(item) },
+                        onDelete = { onDeleteItem(item) }
+                    )
+                }
+                TextButton(
+                    onClick = onDeleteMeal,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Удалить блюдо", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DishFoodItemRow(
+    item: FoodItem,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(item.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                text = NumberFormat.compact(item.grams) + " г • " + item.calories.toInt() + " ккал",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        IconButton(onClick = onEdit) {
+            Icon(Icons.Default.Edit, contentDescription = "Изменить ${item.name}")
+        }
+        IconButton(onClick = onDelete) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = "Удалить ${item.name}",
+                tint = MaterialTheme.colorScheme.error
+            )
+        }
+    }
+}
+
+private fun productCountLabel(count: Int): String = when (count % 10) {
+    1 -> if (count % 100 == 11) "продуктов" else "продукт"
+    2, 3, 4 -> if (count % 100 in 12..14) "продуктов" else "продукта"
+    else -> "продуктов"
+}
+
 @Composable
 private fun WeightInputDialog(initial: Float?, onDismiss: () -> Unit, onSave: (Float) -> Unit) {
     var text by remember { mutableStateOf(initial?.let { NumberFormat.compact(it) } ?: "") }
