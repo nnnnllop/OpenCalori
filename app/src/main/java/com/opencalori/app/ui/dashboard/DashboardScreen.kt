@@ -46,10 +46,7 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -61,9 +58,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -468,7 +463,7 @@ private fun MealCard(
             }
 
             meal.items.forEach { item ->
-                SwipeToDeleteFoodItem(
+                FoodItemRow(
                     item = item,
                     onDelete = { onDeleteItem(item) },
                     onEdit = { onEditItem(item) }
@@ -478,77 +473,71 @@ private fun MealCard(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SwipeToDeleteFoodItem(
+private fun FoodItemRow(
     item: FoodItem,
     onDelete: () -> Unit,
     onEdit: () -> Unit
 ) {
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart) {
-                onDelete()
-                true
-            } else {
-                false
-            }
-        }
-    )
-    val deleteTargetActive = dismissState.targetValue == SwipeToDismissBoxValue.EndToStart
-    SwipeToDismissBox(
-        state = dismissState,
-        enableDismissFromStartToEnd = false,
-        backgroundContent = {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        if (deleteTargetActive) MaterialTheme.colorScheme.errorContainer
-                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
-                    )
-                    .padding(horizontal = 20.dp),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = null,
-                    tint = if (deleteTargetActive) MaterialTheme.colorScheme.onErrorContainer
-                    else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    ) {
+    var actionsExpanded by remember(item.id) { mutableStateOf(false) }
+    Box(Modifier.fillMaxWidth()) {
         Row(
-            Modifier
+            modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 10.dp)
-                .semantics {
-                    customActions = listOf(
-                        CustomAccessibilityAction("Удалить ${item.name}") {
-                            onDelete()
-                            true
-                        }
-                    )
-                },
+                .padding(horizontal = 4.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text(item.name, style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    NumberFormat.compact(item.grams) + " г • " + item.calories.toInt() + " ккал",
+                    text = item.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = NumberFormat.compact(item.grams) + " \u0433 \u2022 " + item.calories.toInt() + " \u043a\u043a\u0430\u043b",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             IconButton(
-                onClick = onEdit,
+                onClick = { actionsExpanded = true },
                 modifier = Modifier.semantics {
-                    contentDescription = "\u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c ${item.name}"
+                    contentDescription = "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u0434\u043b\u044f ${item.name}"
                 }
             ) {
-                Icon(Icons.Default.Edit, contentDescription = null)
+                Icon(Icons.Default.MoreVert, contentDescription = null)
             }
+        }
+        DropdownMenu(
+            expanded = actionsExpanded,
+            onDismissRequest = { actionsExpanded = false },
+            modifier = Modifier.align(Alignment.CenterEnd)
+        ) {
+            DropdownMenuItem(
+                text = { Text("\u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c") },
+                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                onClick = {
+                    actionsExpanded = false
+                    onEdit()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("\u0423\u0434\u0430\u043b\u0438\u0442\u044c") },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                },
+                onClick = {
+                    actionsExpanded = false
+                    onDelete()
+                }
+            )
         }
     }
 }

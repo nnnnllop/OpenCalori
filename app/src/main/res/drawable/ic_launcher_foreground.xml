@@ -4,18 +4,11 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Important artwork stays inside Android's central 66dp adaptive-icon safe zone. -->
+    <!-- Filled mark stays within the central adaptive-icon safe zone. -->
     <path
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="3"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M54,27A27,27 0,1 0,54,81A27,27 0,1 0,54,27" />
+        android:fillColor="#E9F6E7"
+        android:pathData="M30,57C30,55.4 31.3,54 33,54L75,54C76.7,54 78,55.4 78,57C78,68.7 68.4,78 56.6,78L51.4,78C39.6,78 30,68.7 30,57Z" />
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M57.1,39.7C48.2,42.1 42.7,48.9 42.7,57.4c0,6.4 4.5,11.5 10.4,11.5c8.7,0 14.8,-8.7 14.1,-22.3c-3.5,-3.9 -6.9,-6.1 -10.1,-6.9zM47.8,60.4c4.3,-5.8 8.9,-10.7 14.9,-14.6c-5.2,5.4 -8.9,10.8 -11.4,16.8c-0.9,2.1 -4.8,0 -3.5,-2.2z" />
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M31.5,53.2h7.1c1.7,0 1.7,2.6 0,2.6h-7.1c-1.7,0 -1.7,-2.6 0,-2.6zM69.4,53.2h7.1c1.7,0 1.7,2.6 0,2.6h-7.1c-1.7,0 -1.7,-2.6 0,-2.6z" />
+        android:fillColor="#C7F36B"
+        android:pathData="M54,56C54.2,43.2 61.9,33.5 75,30C76,43.7 68.2,54.2 54,58Z" />
 </vector>
