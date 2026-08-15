@@ -148,6 +148,7 @@ fun OnboardingScreen(
 
 private const val TOTAL_STEPS = 4
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun GenderStep(selected: Gender, onSelect: (Gender) -> Unit) {
     Text("Ваш пол", style = MaterialTheme.typography.titleLarge)

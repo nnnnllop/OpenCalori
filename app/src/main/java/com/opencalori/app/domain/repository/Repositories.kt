@@ -76,8 +76,15 @@ interface AiRepository {
 
     suspend fun recognizeDish(imageBase64: String): Result<RecognizedDish>
 
+    suspend fun recognizeText(description: String): Result<RecognizedDish>
+
     suspend fun estimateNutrition(
         imageBase64: String,
+        dishName: String,
+        correctedIngredients: List<String>
+    ): Result<List<EstimatedIngredient>>
+
+    suspend fun estimateTextNutrition(
         dishName: String,
         correctedIngredients: List<String>
     ): Result<List<EstimatedIngredient>>

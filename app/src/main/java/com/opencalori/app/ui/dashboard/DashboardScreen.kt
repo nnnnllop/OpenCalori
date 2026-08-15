@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
@@ -86,6 +87,7 @@ import java.util.Locale
 fun DashboardScreen(
     onNavigateToScanner: (Long) -> Unit,
     onNavigateToSearch: (Long) -> Unit,
+    onNavigateToTextFood: (Long) -> Unit,
     onNavigateToSettings: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
@@ -174,7 +176,8 @@ fun DashboardScreen(
                                 onNavigateToSettings()
                             }
                         },
-                        onSearch = { onNavigateToSearch(state.date.toEpochDay()) }
+                        onSearch = { onNavigateToSearch(state.date.toEpochDay()) },
+                        onDescribe = { onNavigateToTextFood(state.date.toEpochDay()) }
                     )
                 }
             } else {
@@ -208,6 +211,10 @@ fun DashboardScreen(
                 onSearch = {
                     addFoodSheetVisible = false
                     onNavigateToSearch(state.date.toEpochDay())
+                },
+                onDescribe = {
+                    addFoodSheetVisible = false
+                    onNavigateToTextFood(state.date.toEpochDay())
                 }
             )
         }
@@ -227,7 +234,8 @@ fun DashboardScreen(
 private fun AddFoodBottomSheet(
     scannerReady: Boolean,
     onScan: () -> Unit,
-    onSearch: () -> Unit
+    onSearch: () -> Unit,
+    onDescribe: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -251,6 +259,11 @@ private fun AddFoodBottomSheet(
             Icon(Icons.Default.Search, null)
             Spacer(Modifier.width(8.dp))
             Text("Найти или добавить вручную")
+        }
+        OutlinedButton(onClick = onDescribe, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.AutoAwesome, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Описать еду для AI")
         }
     }
 }
@@ -332,7 +345,8 @@ private fun WeightChartCard(history: List<WeightEntry>) {
 @Composable
 private fun EmptyDiaryCard(
     onScan: () -> Unit,
-    onSearch: () -> Unit
+    onSearch: () -> Unit,
+    onDescribe: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -361,6 +375,14 @@ private fun EmptyDiaryCard(
                 Icon(Icons.Default.PhotoCamera, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("\u0421\u043a\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0435\u0434\u0443", maxLines = 1)
+            }
+            OutlinedButton(
+                onClick = onDescribe,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Описать еду для AI")
             }
             OutlinedButton(
                 onClick = onSearch,

@@ -107,8 +107,19 @@ class FakeAiRepository : AiRepository {
         return dishResult
     }
 
+    override suspend fun recognizeText(description: String): Result<RecognizedDish> = dishResult
+
     override suspend fun estimateNutrition(
         imageBase64: String,
+        dishName: String,
+        correctedIngredients: List<String>
+    ): Result<List<EstimatedIngredient>> {
+        estimateCalls++
+        lastIngredients = correctedIngredients
+        return nutritionResult
+    }
+
+    override suspend fun estimateTextNutrition(
         dishName: String,
         correctedIngredients: List<String>
     ): Result<List<EstimatedIngredient>> {

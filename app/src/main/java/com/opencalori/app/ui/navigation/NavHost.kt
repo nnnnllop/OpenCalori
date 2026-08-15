@@ -20,6 +20,7 @@ import com.opencalori.app.ui.theme.MotionTokens
 import com.opencalori.app.ui.onboarding.OnboardingScreen
 import com.opencalori.app.ui.profile.ProfileScreen
 import com.opencalori.app.ui.scanner.ScannerScreen
+import com.opencalori.app.ui.textfood.TextFoodScreen
 import com.opencalori.app.ui.settings.SettingsScreen
 
 object Routes {
@@ -36,9 +37,11 @@ object Routes {
      */
     const val SCANNER = "scanner/{date}"
     const val FOOD_SEARCH = "food_search/{date}"
+    const val TEXT_FOOD = "text_food/{date}"
 
     fun scanner(epochDay: Long) = "scanner/" + epochDay
     fun foodSearch(epochDay: Long) = "food_search/" + epochDay
+    fun textFood(epochDay: Long) = "text_food/" + epochDay
 }
 
 @Composable
@@ -76,6 +79,7 @@ fun OpenCaloriNavHost(
             DashboardScreen(
                 onNavigateToScanner = { date -> navController.navigate(Routes.scanner(date)) },
                 onNavigateToSearch = { date -> navController.navigate(Routes.foodSearch(date)) },
+                onNavigateToTextFood = { date -> navController.navigate(Routes.textFood(date)) },
                 onNavigateToSettings = { navController.navigate(Routes.SETTINGS) }
             )
         }
@@ -95,6 +99,14 @@ fun OpenCaloriNavHost(
             arguments = listOf(navArgument(Routes.ARG_DATE) { type = NavType.LongType })
         ) {
             FoodSearchScreen(onBack = { navController.popBackStack() })
+        }
+
+
+        composable(
+            route = Routes.TEXT_FOOD,
+            arguments = listOf(navArgument(Routes.ARG_DATE) { type = NavType.LongType })
+        ) {
+            TextFoodScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.SETTINGS) {

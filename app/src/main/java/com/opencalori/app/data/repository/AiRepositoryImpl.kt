@@ -130,6 +130,40 @@ val prompt = """
         }
     }
 
+    override suspend fun recognizeText(description: String): Result<RecognizedDish> = runCatching {
+        val config = apiConfigStore.current()
+        require(config.isConfigured) { NOT_CONFIGURED }
+        val prompt = """
+            Ты помощник дневника питания. Пользователь описал, что съел: "$description".
+            Верни только JSON без Markdown: {"dish":"название блюда или приёма пищи","ingredients":["продукт 1","продукт 2"]}.
+            Раздели несколько блюд в понятный общий состав, не придумывай граммовки и не добавляй продукты, которых пользователь не упомянул.
+        """.trimIndent()
+        when (val response = client.chatCompletion(config, listOf(ChatMessage.text("user", prompt)), maxTokens = 500)) {
+            is OpenAiClient.Result.Success -> AiResponseParser.parseDish(response.text)
+            is OpenAiClient.Result.HttpError -> error(response.userMessage)
+            is OpenAiClient.Result.NetworkError -> error(response.userMessage)
+        }
+    }
+
+    override suspend fun estimateTextNutrition(
+        dishName: String,
+        correctedIngredients: List<String>
+    ): Result<List<EstimatedIngredient>> = runCatching {
+        val config = apiConfigStore.current()
+        require(config.isConfigured) { NOT_CONFIGURED }
+        val list = correctedIngredients.joinToString("\n") { "- $it" }
+        val prompt = """
+            Ты считаешь КБЖУ для дневника питания. Блюдо: "$dishName". Продукты: \n$list
+            Верни только JSON-массив без Markdown. Для каждого продукта верни name, rawGrams: 0, cookedGrams: 0, calories, protein, fat, carbs, notes.
+            Нельзя придумывать вес: rawGrams и cookedGrams всегда 0, потому что граммовку введёт пользователь. КБЖУ укажи на 100 г съедобного продукта.
+        """.trimIndent()
+        when (val response = client.chatCompletion(config, listOf(ChatMessage.text("user", prompt)), maxTokens = (600 + correctedIngredients.size * 160).coerceIn(600, 3000))) {
+            is OpenAiClient.Result.Success -> AiResponseParser.parseNutrition(response.text)
+            is OpenAiClient.Result.HttpError -> error(response.userMessage)
+            is OpenAiClient.Result.NetworkError -> error(response.userMessage)
+        }
+    }
+
     override suspend fun estimateNutrition(
         imageBase64: String,
         dishName: String,
