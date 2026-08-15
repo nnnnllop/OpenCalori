@@ -157,19 +157,7 @@ fun DashboardScreen(
             }
 
             if (state.sections.isEmpty()) {
-                item {
-                    EmptyDiaryCard(
-                        onScan = {
-                            if (state.aiEnabled && state.scannerReady) {
-                                onNavigateToScanner(state.date.toEpochDay())
-                            } else {
-                                onNavigateToSettings()
-                            }
-                        },
-                        onSearch = { onNavigateToSearch(state.date.toEpochDay()) },
-                        onDescribe = { onNavigateToTextFood(state.date.toEpochDay()) }
-                    )
-                }
+                item { EmptyDiaryCard() }
             } else {
                 // Date -> meal -> dish -> products. The meal is a plain section header, the dish
                 // is a card, and the products live inside the dish - never a card in a card.
@@ -347,55 +335,16 @@ private fun WeightChartCard(history: List<WeightEntry>) {
 }
 
 @Composable
-private fun EmptyDiaryCard(
-    onScan: () -> Unit,
-    onSearch: () -> Unit,
-    onDescribe: () -> Unit
-) {
+private fun EmptyDiaryCard() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = AppShapes.Medium,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56f)
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56f))
     ) {
-        Column(
-            Modifier
-                .padding(24.dp)
-                .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+        Column(Modifier.padding(20.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Дневник пока пуст", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Text(
-                "Сфотографируйте еду или найдите продукт вручную.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Button(
-                onClick = onScan,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Default.PhotoCamera, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("\u0421\u043a\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0435\u0434\u0443", maxLines = 1)
-            }
-            OutlinedButton(
-                onClick = onDescribe,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Описать еду для AI")
-            }
-            OutlinedButton(
-                onClick = onSearch,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Default.Search, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("\u041d\u0430\u0439\u0442\u0438 \u043f\u0440\u043e\u0434\u0443\u043a\u0442 \u0432\u0440\u0443\u0447\u043d\u0443\u044e", maxLines = 1)
-            }
+            Spacer(Modifier.height(4.dp))
+            Text("Нажмите «Добавить еду», чтобы записать первый приём пищи.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

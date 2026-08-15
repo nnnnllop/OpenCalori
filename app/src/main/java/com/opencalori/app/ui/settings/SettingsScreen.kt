@@ -1,6 +1,7 @@
 package com.opencalori.app.ui.settings
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -86,6 +87,10 @@ fun SettingsScreen(
     var keyVisible by remember { mutableStateOf(false) }
     var analysisOptionsExpanded by remember { mutableStateOf(false) }
     var page by remember { mutableStateOf(SettingsPage.ROOT) }
+
+    BackHandler {
+        if (page == SettingsPage.ROOT) onBack() else page = SettingsPage.ROOT
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
