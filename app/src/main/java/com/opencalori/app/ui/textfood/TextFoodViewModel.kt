@@ -128,6 +128,14 @@ class TextFoodViewModel @Inject constructor(
         }
     }
 
+    fun retry() {
+        when (_state.value.stage) {
+            TextFoodStage.INPUT -> recognize()
+            TextFoodStage.DISHES -> calculate()
+            TextFoodStage.GRAMS -> Unit
+        }
+    }
+
     // ---- Dish and ingredient editing ----
 
     fun renameDish(dishIndex: Int, name: String) = updateDish(dishIndex) { it.copy(name = name) }

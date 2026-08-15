@@ -88,8 +88,8 @@ fun SettingsScreen(
     var analysisOptionsExpanded by remember { mutableStateOf(false) }
     var page by remember { mutableStateOf(SettingsPage.ROOT) }
 
-    BackHandler {
-        if (page == SettingsPage.ROOT) onBack() else page = SettingsPage.ROOT
+    BackHandler(enabled = page != SettingsPage.ROOT) {
+        page = SettingsPage.ROOT
     }
 
     val exportLauncher = rememberLauncherForActivityResult(

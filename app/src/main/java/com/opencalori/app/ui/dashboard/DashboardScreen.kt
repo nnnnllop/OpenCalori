@@ -618,7 +618,7 @@ private fun DishFoodItemRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text(item.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(item.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(
                 text = NumberFormat.compact(item.grams) + " г • " + item.calories.toInt() + " ккал",
                 style = MaterialTheme.typography.bodySmall,

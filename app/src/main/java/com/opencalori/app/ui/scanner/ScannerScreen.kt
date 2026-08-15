@@ -642,12 +642,6 @@ private fun ErrorStage(
             }
             Spacer(Modifier.height(8.dp))
         }
-        OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.Key, null)
-            Spacer(Modifier.size(8.dp))
-            Text("Настроить ИИ")
-        }
-        Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = onRetake, modifier = Modifier.fillMaxWidth()) {
             Text("Сделать новое фото")
         }

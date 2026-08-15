@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -115,7 +116,7 @@ fun OnboardingScreen(
         Spacer(Modifier.height(16.dp))
 
         if (state.result == null) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.imePadding(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (state.step > 0) {
                     OutlinedButton(onClick = viewModel::back, modifier = Modifier.weight(1f)) {
                         Text("Назад")
