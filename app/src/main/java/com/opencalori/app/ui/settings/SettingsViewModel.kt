@@ -142,6 +142,7 @@ class SettingsViewModel @Inject constructor(
     // ---- AI scenario ----
     fun setAiEnabled(enabled: Boolean) = viewModelScope.launch {
         userPrefs.setAiEnabled(enabled)
+        if (enabled) userPrefs.setNutritionSourceMode(NutritionSourceMode.AI_ONLY)
         if (!enabled) userPrefs.setNutritionSourceMode(NutritionSourceMode.LOCAL_DATABASE)
     }
     fun setAiSkipListReview(skip: Boolean) = viewModelScope.launch { userPrefs.setAiSkipListReview(skip) }

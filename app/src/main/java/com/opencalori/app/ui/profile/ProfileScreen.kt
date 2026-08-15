@@ -3,6 +3,8 @@ package com.opencalori.app.ui.profile
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,7 +41,7 @@ import com.opencalori.app.domain.model.ActivityLevel
 import com.opencalori.app.domain.model.Gender
 import com.opencalori.app.domain.model.Goal
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ProfileScreen(
     onBack: () -> Unit,
@@ -78,7 +80,7 @@ fun ProfileScreen(
             )
 
             Text("Пол", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Gender.entries.forEach { gender ->
                     FilterChip(
                         selected = state.gender == gender,

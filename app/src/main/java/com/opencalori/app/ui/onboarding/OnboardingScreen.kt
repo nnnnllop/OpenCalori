@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,6 +43,7 @@ import com.opencalori.app.ui.theme.CarbsColor
 import com.opencalori.app.ui.theme.FatColor
 import com.opencalori.app.ui.theme.ProteinColor
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun OnboardingScreen(
     onFinished: () -> Unit,
@@ -148,7 +151,7 @@ private const val TOTAL_STEPS = 4
 @Composable
 private fun GenderStep(selected: Gender, onSelect: (Gender) -> Unit) {
     Text("Ваш пол", style = MaterialTheme.typography.titleLarge)
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Gender.entries.forEach { gender ->
             FilterChip(
                 selected = selected == gender,

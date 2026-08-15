@@ -19,9 +19,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -342,6 +344,22 @@ private fun CameraCaptureView(
                 modifier = Modifier.fillMaxSize()
             )
 
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(0.86f)
+                    .fillMaxHeight(0.58f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .border(2.dp, androidx.compose.ui.graphics.Color.White, AppShapes.Medium)
+                )
+                Text("Снимите блюдо целиком", color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold)
+                Text("Если блюд несколько, не перекрывайте их", color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.bodySmall)
+            }
+
             IconButton(
                 onClick = {
                     flashMode = when (flashMode) {
@@ -567,8 +585,8 @@ private fun ReviewDishStage(state: ScannerUiState, viewModel: ScannerViewModel) 
     val dish = state.dish ?: return
     val nutritionSourceDescription = when (state.nutritionSourceMode) {
         com.opencalori.app.domain.model.NutritionSourceMode.AI_ONLY -> "КБЖУ и граммовки оценит ИИ по фото и подтверждённому составу."
-        com.opencalori.app.domain.model.NutritionSourceMode.LOCAL_DATABASE -> "ИИ определил блюдо и состав, а КБЖУ будут взяты из локальной базы."
-        com.opencalori.app.domain.model.NutritionSourceMode.HYBRID -> "ИИ определил блюдо и состав, а КБЖУ будут сверены по локальной базе."
+        com.opencalori.app.domain.model.NutritionSourceMode.LOCAL_DATABASE -> "Состав определит ИИ, а КБЖУ найдём в локальном каталоге."
+        com.opencalori.app.domain.model.NutritionSourceMode.HYBRID -> "ИИ определит блюдо, каталог поможет уточнить КБЖУ."
     }
     val nutritionAction = when (state.nutritionSourceMode) {
         com.opencalori.app.domain.model.NutritionSourceMode.AI_ONLY -> "Рассчитать КБЖУ с ИИ"
@@ -591,7 +609,7 @@ private fun ReviewDishStage(state: ScannerUiState, viewModel: ScannerViewModel) 
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        if (state.isLocalDraft) {
+        if (state.nutritionSourceMode != com.opencalori.app.domain.model.NutritionSourceMode.AI_ONLY && state.isLocalDraft) {
             Spacer(Modifier.height(12.dp))
             Card(
                 Modifier.fillMaxWidth(),
@@ -693,7 +711,7 @@ private fun ReviewGramsStage(state: ScannerUiState, viewModel: ScannerViewModel)
         )
         Spacer(Modifier.height(12.dp))
         when {
-            state.localDish != null -> {
+            state.nutritionSourceMode != com.opencalori.app.domain.model.NutritionSourceMode.AI_ONLY && state.localDish != null -> {
                 Card(
                     Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -708,7 +726,7 @@ private fun ReviewGramsStage(state: ScannerUiState, viewModel: ScannerViewModel)
                 }
                 Spacer(Modifier.height(12.dp))
             }
-            state.isLocalDraft -> {
+            state.nutritionSourceMode != com.opencalori.app.domain.model.NutritionSourceMode.AI_ONLY && state.isLocalDraft -> {
                 Card(
                     Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
