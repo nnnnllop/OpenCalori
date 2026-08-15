@@ -5,6 +5,7 @@ import com.opencalori.app.data.repository.LocalNutritionResolver
 import com.opencalori.app.data.repository.PhotoNutritionResolver
 import com.opencalori.app.domain.model.ApiConfig
 import com.opencalori.app.domain.model.Dish
+import com.opencalori.app.domain.model.EstimatedIngredient
 import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.domain.model.Product
 import com.opencalori.app.domain.model.RecognizedDish
@@ -35,7 +36,21 @@ class ScannerViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val targetDay = 20_310L
-    private val ai = FakeAiRepository()
+    private val ai = FakeAiRepository().apply {
+        nutritionResult = Result.success(
+            listOf(
+                EstimatedIngredient(
+                    name = "\u0413\u0440\u0435\u0447\u043a\u0430 \u0441 \u043a\u0443\u0440\u0438\u0446\u0435\u0439",
+                    rawGrams = 100f,
+                    cookedGrams = 100f,
+                    caloriesPer100g = 180f,
+                    proteinPer100g = 15f,
+                    fatPer100g = 6f,
+                    carbsPer100g = 18f
+                )
+            )
+        )
+    }
     private val meals = FakeMealRepository()
     private val images = FakeImageProcessor()
     private val prefs = FakeUserPreferences(UserProfile(onboardingCompleted = true))
@@ -115,109 +130,84 @@ class ScannerViewModelTest {
     }
 
     @Test
-    fun `known local dish uses its local serving and never requests AI macros`() = runTest {
+    fun `configured provider estimates known dishes through AI before local catalogue`() = runTest {
         dishes.catalogue.value = listOf(
             Dish(10, "\u041f\u0430\u0441\u0442\u0430 \u043a\u0430\u0440\u0431\u043e\u043d\u0430\u0440\u0430", listOf("carbonara"), emptyList(), 280f, 210f, 11f, 12f, 22f)
         )
         ai.dishResult = Result.success(RecognizedDish("carbonara", listOf(RecognizedIngredient("\u043f\u0430\u0441\u0442\u0430"))))
         val vm = viewModel()
         advanceUntilIdle()
-
         vm.onPhotoTaken(photo())
         advanceUntilIdle()
         vm.confirmIngredientsAndEstimate()
         advanceUntilIdle()
-
         assertEquals(ScannerStage.REVIEW_GRAMS, vm.uiState.value.stage)
-        assertEquals("\u041f\u0430\u0441\u0442\u0430 \u043a\u0430\u0440\u0431\u043e\u043d\u0430\u0440\u0430", vm.uiState.value.localDish?.name)
-        assertEquals(280f, vm.uiState.value.estimated.single().cookedGrams, 0.01f)
-        assertEquals(210f, vm.uiState.value.estimated.single().caloriesPer100g, 0.01f)
-        assertEquals(0, ai.estimateCalls)
+        assertEquals(1, ai.estimateCalls)
+        assertEquals("\u0413\u0440\u0435\u0447\u043a\u0430 \u0441 \u043a\u0443\u0440\u0438\u0446\u0435\u0439", vm.uiState.value.estimated.single().name)
+        assertEquals(180f, vm.uiState.value.estimated.single().caloriesPer100g, 0.01f)
+        assertEquals(null, vm.uiState.value.localDish)
     }
 
     @Test
-    fun `unknown dish with locally matched components remains a local draft`() = runTest {
-        seedProducts()
+    fun `AI estimation failure becomes recoverable error instead of throwing from confirmation`() = runTest {
         ai.dishResult = Result.success(dish())
+        ai.nutritionResult = Result.failure(IllegalStateException("\u0441\u0435\u0442\u044c \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430"))
         val vm = viewModel()
         advanceUntilIdle()
-
         vm.onPhotoTaken(photo())
         advanceUntilIdle()
         vm.confirmIngredientsAndEstimate()
         advanceUntilIdle()
-
-        assertEquals(ScannerStage.REVIEW_GRAMS, vm.uiState.value.stage)
-        assertTrue(vm.uiState.value.isLocalDraft)
-        assertTrue(vm.uiState.value.unmatchedIngredients.isEmpty())
-        assertEquals(2, vm.uiState.value.estimated.size)
-        assertEquals(113f, vm.uiState.value.estimated.first().caloriesPer100g, 0.01f)
-        assertTrue(dishes.catalogue.value.isEmpty())
-        assertTrue(products.custom.value.isEmpty())
-        assertEquals(0, ai.estimateCalls)
+        assertEquals(ScannerStage.ERROR, vm.uiState.value.stage)
+        assertTrue(vm.uiState.value.error.orEmpty().contains("\u0441\u0435\u0442\u044c"))
+        assertNotNull(vm.uiState.value.photo)
     }
 
     @Test
-    fun `unmatched local component returns to the draft instead of saving invented macros`() = runTest {
-        seedProducts()
-        ai.dishResult = Result.success(
-            RecognizedDish("\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u043e\u0435", listOf(RecognizedIngredient("\u043a\u0443\u0440\u0438\u0446\u0430"), RecognizedIngredient("\u043e\u0431\u043b\u0430\u0447\u043d\u044b\u0439 \u0441\u043e\u0443\u0441")))
-        )
+    fun `empty AI estimate returns to editable ingredient review`() = runTest {
+        ai.dishResult = Result.success(dish())
+        ai.nutritionResult = Result.success(emptyList())
         val vm = viewModel()
         advanceUntilIdle()
-
-        vm.onPhotoTaken(photo())
-        advanceUntilIdle()
-        vm.confirmIngredientsAndEstimate()
-        advanceUntilIdle()
-
-        assertEquals(ScannerStage.REVIEW_DISH, vm.uiState.value.stage)
-        assertTrue(vm.uiState.value.isLocalDraft)
-        assertEquals(listOf("\u043e\u0431\u043b\u0430\u0447\u043d\u044b\u0439 \u0441\u043e\u0443\u0441"), vm.uiState.value.unmatchedIngredients)
-        assertEquals(0, meals.addCalls.size)
-    }
-
-    @Test
-    fun `editing a confirmed draft re-resolves local ingredient names`() = runTest {
-        seedProducts()
-        ai.dishResult = Result.success(RecognizedDish("\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u043e\u0435", listOf(RecognizedIngredient("\u043e\u0431\u043b\u0430\u0447\u043d\u044b\u0439 \u0441\u043e\u0443\u0441"))))
-        val vm = viewModel()
-        advanceUntilIdle()
-
         vm.onPhotoTaken(photo())
         advanceUntilIdle()
         vm.confirmIngredientsAndEstimate()
         advanceUntilIdle()
         assertEquals(ScannerStage.REVIEW_DISH, vm.uiState.value.stage)
-
-        vm.updateIngredient(0, "\u043a\u0443\u0440\u0438\u0446\u0430")
-        vm.confirmIngredientsAndEstimate()
-        advanceUntilIdle()
-
-        assertEquals(ScannerStage.REVIEW_GRAMS, vm.uiState.value.stage)
-        assertEquals("\u041a\u0443\u0440\u0438\u0446\u0430", vm.uiState.value.estimated.single().name)
+        assertTrue(vm.uiState.value.error.orEmpty().contains("\u0418\u0418"))
     }
 
     @Test
-    fun `local macro values stay fixed while grams remain editable`() = runTest {
-        seedProducts()
+    fun `confirmed ingredients are passed to AI without local draft transition`() = runTest {
         ai.dishResult = Result.success(dish())
         val vm = viewModel()
         advanceUntilIdle()
+        vm.onPhotoTaken(photo())
+        advanceUntilIdle()
+        vm.updateIngredient(0, "\u0440\u0438\u0441")
+        vm.confirmIngredientsAndEstimate()
+        advanceUntilIdle()
+        assertEquals(listOf("\u0440\u0438\u0441", "\u041a\u0443\u0440\u0438\u0446\u0430"), ai.lastIngredients)
+        assertEquals(ScannerStage.REVIEW_GRAMS, vm.uiState.value.stage)
+        assertFalse(vm.uiState.value.isLocalDraft)
+    }
 
+    @Test
+    fun `AI macro values stay fixed while grams remain editable`() = runTest {
+        ai.dishResult = Result.success(dish())
+        val vm = viewModel()
+        advanceUntilIdle()
         vm.onPhotoTaken(photo())
         advanceUntilIdle()
         vm.confirmIngredientsAndEstimate()
         advanceUntilIdle()
         vm.setGrams(0, 180f)
-
         val item = vm.uiState.value.estimated.first()
         assertEquals(180f, item.cookedGrams, 0.01f)
-        assertEquals(113f, item.caloriesPer100g, 0.01f)
-        assertEquals(203.4f, item.totalCalories, 0.01f)
-        assertEquals(0, ai.estimateCalls)
+        assertEquals(180f, item.caloriesPer100g, 0.01f)
+        assertEquals(324f, item.totalCalories, 0.01f)
+        assertEquals(1, ai.estimateCalls)
     }
-
     @Test
     fun `the meal is written to the day the diary was showing`() = runTest {
         seedProducts()

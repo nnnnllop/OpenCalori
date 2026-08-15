@@ -17,10 +17,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -51,9 +55,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -220,18 +226,6 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                OutlinedButton(
-                    onClick = viewModel::useNvidiaNemotronPreset,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("\u0418\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u044c NVIDIA Nemotron для фотосканера")
-                }
-                Text(
-                    "\u041f\u0440\u0435\u0441\u0435\u0442 подставит только URL и Model ID; ваш API-ключ не меняется.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
                 OutlinedTextField(
                     value = state.baseUrl,
                     onValueChange = viewModel::setBaseUrl,
@@ -432,42 +426,38 @@ private enum class SettingsPage(val title: String) {
 
 @Composable
 private fun SettingsMenuPage(onSelect: (SettingsPage) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SettingsDestinationCard(
-            title = "\u041f\u0440\u043e\u0444\u0438\u043b\u044c",
-            subtitle = "\u0426\u0435\u043b\u044c, \u0432\u0435\u0441 \u0438 \u043f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u044b \u0440\u0430\u0441\u0447\u0451\u0442\u0430",
-            onClick = { onSelect(SettingsPage.PROFILE) }
-        )
-        SettingsDestinationCard(
-            title = "\u0418\u0418 \u0438 \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u0432\u0430\u043d\u0438\u0435",
-            subtitle = "\u0424\u043e\u0442\u043e\u0441\u043a\u0430\u043d\u0435\u0440, \u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a \u041a\u0411\u0416\u0423 \u0438 \u043a\u043b\u044e\u0447 API",
-            onClick = { onSelect(SettingsPage.AI) }
-        )
-        SettingsDestinationCard(
-            title = "\u0414\u0430\u043d\u043d\u044b\u0435",
-            subtitle = "\u042d\u043a\u0441\u043f\u043e\u0440\u0442, \u0438\u043c\u043f\u043e\u0440\u0442 \u0438 \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435",
-            onClick = { onSelect(SettingsPage.DATA) }
-        )
-        SettingsDestinationCard(
-            title = "\u041f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430 \u0438 \u043e \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0438",
-            subtitle = "Telegram-\u043a\u0430\u043d\u0430\u043b, \u0438\u0441\u0445\u043e\u0434\u043d\u044b\u0439 \u043a\u043e\u0434 \u0438 \u0432\u0435\u0440\u0441\u0438\u044f",
-            onClick = { onSelect(SettingsPage.SUPPORT) }
-        )
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SettingsDestinationCard(icon = Icons.Default.Person, title = "\u041f\u0440\u043e\u0444\u0438\u043b\u044c", subtitle = "\u0426\u0435\u043b\u044c, \u0432\u0435\u0441 \u0438 \u043f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u044b \u0440\u0430\u0441\u0447\u0451\u0442\u0430", onClick = { onSelect(SettingsPage.PROFILE) })
+        SettingsDestinationCard(icon = Icons.Default.CameraAlt, title = "\u0418\u0418 \u0438 \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u0432\u0430\u043d\u0438\u0435", subtitle = "\u0424\u043e\u0442\u043e\u0441\u043a\u0430\u043d\u0435\u0440, \u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a \u041a\u0411\u0416\u0423 \u0438 \u043a\u043b\u044e\u0447 API", onClick = { onSelect(SettingsPage.AI) })
+        SettingsDestinationCard(icon = Icons.Default.Storage, title = "\u0414\u0430\u043d\u043d\u044b\u0435", subtitle = "\u042d\u043a\u0441\u043f\u043e\u0440\u0442, \u0438\u043c\u043f\u043e\u0440\u0442 \u0438 \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435", onClick = { onSelect(SettingsPage.DATA) })
+        SettingsDestinationCard(icon = Icons.Default.Favorite, title = "\u041f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430 \u0438 \u043e \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0438", subtitle = "Telegram-\u043a\u0430\u043d\u0430\u043b, \u0438\u0441\u0445\u043e\u0434\u043d\u044b\u0439 \u043a\u043e\u0434 \u0438 \u0432\u0435\u0440\u0441\u0438\u044f", onClick = { onSelect(SettingsPage.SUPPORT) })
     }
 }
 
 @Composable
-private fun SettingsDestinationCard(title: String, subtitle: String, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
-        TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun SettingsDestinationCard(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = AppShapes.Medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        TextButton(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 14.dp)
+        ) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(26.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.size(16.dp))
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(text = title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                    Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                Icon(imageVector = Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
 }
-
 private const val TELEGRAM_URL = "https://t.me/NineKoder"
 private const val REPO_URL = "https://github.com/nnnnllop/OpenCalori"
 

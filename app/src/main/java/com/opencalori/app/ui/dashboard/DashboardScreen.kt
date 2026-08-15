@@ -409,7 +409,7 @@ private fun MealCard(
         modifier = Modifier.fillMaxWidth(),
         shape = AppShapes.Medium,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f)
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         Column(Modifier.padding(12.dp)) {
@@ -522,12 +522,7 @@ private fun SwipeToDeleteFoodItem(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp)
-                .background(
-                    color = MaterialTheme.colorScheme.surface,
-                    shape = AppShapes.Small
-                )
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .padding(horizontal = 4.dp, vertical = 10.dp)
                 .semantics {
                     customActions = listOf(
                         CustomAccessibilityAction("Удалить ${item.name}") {

@@ -132,14 +132,11 @@ class ScannerViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val mode = profile().nutritionSourceMode
-            if (mode.usesAi && !apiConfigStore.current().isConfigured) {
+            if (!apiConfigStore.current().isConfigured) {
                 _uiState.update { it.copy(stage = ScannerStage.NOT_CONFIGURED) }
             }
         }
-    }
-
-    fun setMealType(type: MealType) = _uiState.update { it.copy(mealType = type) }
+    }    fun setMealType(type: MealType) = _uiState.update { it.copy(mealType = type) }
 
     fun setGramsEditMode(mode: GramsEditMode) = _uiState.update { it.copy(gramsEditMode = mode) }
 
@@ -178,11 +175,11 @@ class ScannerViewModel @Inject constructor(
     }
 
     private suspend fun runStage1(base64: String) {
-        if (!profile().nutritionSourceMode.usesAi) {
+        if (!apiConfigStore.current().isConfigured) {
             _uiState.update {
                 it.copy(
-                    stage = ScannerStage.ERROR,
-                    error = "\u0412 л\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u043c р\u0435\u0436\u0438\u043c\u0435 ф\u043e\u0442\u043e н\u0435 о\u0442\u043f\u0440\u0430\u0432\u043b\u044f\u0435\u0442\u0441\u044f в И\u0418. Н\u0430\u0439\u0434\u0438\u0442\u0435 п\u0440\u043e\u0434\u0443\u043a\u0442 вр\u0443\u0447\u043d\u0443\u044e ил\u0438 в\u044b\u0431\u0435\u0440\u0438\u0442\u0435 к\u043e\u043c\u0431\u0438\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0439 р\u0435\u0436\u0438\u043c."
+                    stage = ScannerStage.NOT_CONFIGURED,
+                    error = "\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 \u0418\u0418 \u0432 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0430\u0445, \u0447\u0442\u043e\u0431\u044b \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u0432\u0430\u0442\u044c \u0431\u043b\u044e\u0434\u0430 \u043f\u043e \u0444\u043e\u0442\u043e."
                 )
             }
             return
@@ -263,7 +260,56 @@ class ScannerViewModel @Inject constructor(
 
     private suspend fun runStage2(photo: String, dishName: String, items: List<String>) {
         _uiState.update { it.copy(stage = ScannerStage.ANALYZING_2, error = null) }
-        val localResolution = photoNutritionResolver.resolve(dishName, items)
+
+        // A configured provider is authoritative for the photo flow: recognition and nutrition
+        // estimation both come from the AI. The local catalogue remains a safe fallback only
+        // when the provider is unavailable, and every repository failure is converted into a UI
+        // error instead of escaping the ViewModel coroutine and closing the application.
+        if (apiConfigStore.current().isConfigured) {
+            val aiEstimate = try {
+                aiRepository.estimateNutrition(photo, dishName, items)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                Result.failure(error)
+            }
+            if (aiEstimate.isFailure) {
+                fail(
+                    aiEstimate.exceptionOrNull() ?: IllegalStateException(),
+                    "\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0446\u0435\u043d\u043a\u0438 \u041a\u0411\u0416\u0423 \u0447\u0435\u0440\u0435\u0437 \u0418\u0418"
+                )
+                return
+            }
+            val estimated = aiEstimate.getOrThrow()
+            if (estimated.isEmpty()) {
+                _uiState.update {
+                    it.copy(
+                        stage = ScannerStage.REVIEW_DISH,
+                        error = "\u0418\u0418 \u043d\u0435 \u0432\u0435\u0440\u043d\u0443\u043b \u043f\u0440\u043e\u0434\u0443\u043a\u0442\u044b \u0434\u043b\u044f \u0440\u0430\u0441\u0447\u0451\u0442\u0430. \u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u0441\u043e\u0441\u0442\u0430\u0432 \u0438 \u043f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u0435 \u043f\u043e\u043f\u044b\u0442\u043a\u0443."
+                    )
+                }
+                return
+            }
+            _uiState.update {
+                it.copy(
+                    estimated = estimated,
+                    localDish = null,
+                    isLocalDraft = false,
+                    unmatchedIngredients = emptyList()
+                )
+            }
+            openEstimatedResult()
+            return
+        }
+
+        val localResolution = try {
+            photoNutritionResolver.resolve(dishName, items)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            fail(error, "\u041e\u0448\u0438\u0431\u043a\u0430 \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0433\u043e \u0441\u043e\u043f\u043e\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u0438\u044f \u043f\u0440\u043e\u0434\u0443\u043a\u0442\u043e\u0432")
+            return
+        }
         if (!localResolution.isComplete) {
             _uiState.update {
                 it.copy(
@@ -284,37 +330,10 @@ class ScannerViewModel @Inject constructor(
                 unmatchedIngredients = emptyList()
             )
         }
-        val localProfile = profile()
-        when {
-            localProfile.aiSkipGramsReview && localProfile.aiSkipFinalReview -> saveMeal()
-            localProfile.aiSkipGramsReview -> _uiState.update { it.copy(stage = ScannerStage.REVIEW_FINAL) }
-            else -> _uiState.update { it.copy(stage = ScannerStage.REVIEW_GRAMS) }
-        }
-        return
+        openEstimatedResult()
+    }
 
-        val aiEstimate = aiRepository.estimateNutrition(photo, dishName, items)
-        if (aiEstimate.isFailure) {
-            fail(aiEstimate.exceptionOrNull() ?: IllegalStateException(), "\\u041e\\u0448\\u0438\\u0431\\u043a\\u0430 \u043e\\u0446\\u0435\\u043d\\u043a\\u0438 \u041a\\u0411\\u0416\\u0423")
-            return
-        }
-        val mode = profile().nutritionSourceMode
-        val estimated = aiEstimate.getOrThrow()
-        val finalEstimate = if (mode.usesLocalCatalogue) {
-            val local = localNutritionResolver.replaceMacros(estimated)
-            if (!local.isComplete) {
-                _uiState.update {
-                    it.copy(
-                        stage = ScannerStage.ERROR,
-                        error = "\\u041d\\u0435 \u043d\\u0430\\u0439\\u0434\\u0435\\u043d\\u044b \u043f\\u0440\\u043e\\u0434\\u0443\\u043a\\u0442\\u044b \u0432 \u043b\\u043e\\u043a\\u0430\\u043b\\u044c\\u043d\\u043e\\u0439 \u0431\\u0430\\u0437\\u0435: " + local.unmatchedNames.joinToString()
-                    )
-                }
-                return
-            }
-            local.resolved
-        } else {
-            estimated
-        }
-        _uiState.update { it.copy(estimated = finalEstimate) }
+    private suspend fun openEstimatedResult() {
         val profile = profile()
         when {
             profile.aiSkipGramsReview && profile.aiSkipFinalReview -> saveMeal()
