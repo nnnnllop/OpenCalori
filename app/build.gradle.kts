@@ -29,8 +29,8 @@ android {
         applicationId = "com.opencalori.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 19
-        versionName = "0.3.5"
+        versionCode = 20
+        versionName = "0.3.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
