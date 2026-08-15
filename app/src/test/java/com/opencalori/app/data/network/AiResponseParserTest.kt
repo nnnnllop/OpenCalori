@@ -81,9 +81,149 @@ class AiResponseParserTest {
     @Test
     fun `ingredients get distinct ids so list edits do not collide`() {
         val dish = AiResponseParser.parseDish(
-            "{\"dish\":\"Х\",\"ingredients\":[\"Рис\",\"Рис\"]}"
+            "{\"dish\":\"Х\",\"ingredients\":[\"Рис\",\"Курица\"]}"
         )
         assertEquals(2, dish.ingredients.map { it.id }.distinct().size)
+    }
+
+    @Test
+    fun `duplicated ingredients are collapsed`() {
+        val dish = AiResponseParser.parseDish(
+            "{\"dish\":\"Х\",\"ingredients\":[\"Рис\",\"рис\",\"Курица\"]}"
+        )
+        assertEquals(listOf("Рис", "Курица"), dish.ingredients.map { it.name })
+    }
+
+    // ---- Multi-dish recognition ----
+
+    @Test
+    fun `several dishes stay separate with their own ingredients`() {
+        val dishes = AiResponseParser.parseDishes(
+            """
+            {"dishes":[
+              {"name":"Паста карбонара","confidence":0.86,"ingredients":[
+                {"name":"паста","confidence":0.91,"visibleQuantity":null},
+                {"name":"бекон","confidence":0.78,"visibleQuantity":null}
+              ]},
+              {"name":"Овощной салат","confidence":0.81,"ingredients":[
+                {"name":"огурец","confidence":0.93,"visibleQuantity":null},
+                {"name":"помидор","confidence":0.9,"visibleQuantity":null}
+              ]}
+            ]}
+            """.trimIndent()
+        )
+        assertEquals(listOf("Паста карбонара", "Овощной салат"), dishes.map { it.dishName })
+        assertEquals(listOf("паста", "бекон"), dishes[0].ingredients.map { it.name })
+        assertEquals(listOf("огурец", "помидор"), dishes[1].ingredients.map { it.name })
+        assertEquals(0.86f, dishes[0].confidence!!, delta)
+        assertEquals(0.91f, dishes[0].ingredients.first().confidence!!, delta)
+        assertEquals(2, dishes.map { it.id }.distinct().size)
+    }
+
+    @Test
+    fun `legacy single dish object becomes a one element list`() {
+        val dishes = AiResponseParser.parseDishes(
+            "{\"dish\":\"Плов\",\"ingredients\":[\"Рис\",\"Морковь\"]}"
+        )
+        assertEquals(1, dishes.size)
+        assertEquals("Плов", dishes.single().dishName)
+        assertEquals(2, dishes.single().ingredients.size)
+    }
+
+    @Test
+    fun `bare array of dishes is accepted`() {
+        val dishes = AiResponseParser.parseDishes(
+            "[{\"name\":\"Суп\",\"ingredients\":[\"Картошка\"]}," +
+                "{\"name\":\"Хлеб\",\"ingredients\":[\"Хлеб\"]}]"
+        )
+        assertEquals(listOf("Суп", "Хлеб"), dishes.map { it.dishName })
+    }
+
+    @Test
+    fun `markdown fences and chatter around a dish array are ignored`() {
+        val dishes = AiResponseParser.parseDishes(
+            "Конечно! \n```json\n{\"dishes\":[{\"name\":\"Омлет\",\"ingredients\":[\"Яйцо\"]}]}\n```\nГотово."
+        )
+        assertEquals("Омлет", dishes.single().dishName)
+    }
+
+    @Test
+    fun `empty and ingredientless dishes are dropped`() {
+        val dishes = AiResponseParser.parseDishes(
+            "{\"dishes\":[{\"name\":\"\",\"ingredients\":[]}," +
+                "{\"name\":\"Салат\",\"ingredients\":[\"Огурец\",\"\",\"   \"]}]}"
+        )
+        assertEquals(1, dishes.size)
+        assertEquals(listOf("Огурец"), dishes.single().ingredients.map { it.name })
+    }
+
+    @Test
+    fun `no food at all yields an empty dish list instead of an error`() {
+        assertTrue(AiResponseParser.parseDishes("{\"dishes\":[]}").isEmpty())
+    }
+
+    @Test
+    fun `nameless dish with ingredients is labelled as unknown`() {
+        val dishes = AiResponseParser.parseDishes(
+            "{\"dishes\":[{\"name\":\"\",\"ingredients\":[\"Каша\"]}]}"
+        )
+        assertEquals("Неизвестное блюдо", dishes.single().dishName)
+        assertTrue(dishes.single().isUnknown)
+    }
+
+    @Test
+    fun `dishes given as plain strings still parse`() {
+        val dishes = AiResponseParser.parseDishes(
+            "{\"dishes\":[\"Паста\",\"Салат\"]}"
+        )
+        assertEquals(listOf("Паста", "Салат"), dishes.map { it.dishName })
+        assertTrue(dishes.all { it.ingredients.isEmpty() })
+    }
+
+    @Test
+    fun `confidence given as a percentage is normalised`() {
+        val dishes = AiResponseParser.parseDishes(
+            "{\"dishes\":[{\"name\":\"Суп\",\"confidence\":86,\"ingredients\":[\"Вода\"]}]}"
+        )
+        assertEquals(0.86f, dishes.single().confidence!!, delta)
+    }
+
+    @Test
+    fun `low confidence is flagged for the ui`() {
+        val dishes = AiResponseParser.parseDishes(
+            "{\"dishes\":[{\"name\":\"Соус\",\"confidence\":0.3,\"ingredients\":[" +
+                "{\"name\":\"сметана\",\"confidence\":0.2}]}]}"
+        )
+        assertTrue(dishes.single().isLowConfidence)
+        assertTrue(dishes.single().ingredients.single().isLowConfidence)
+    }
+
+    @Test
+    fun `visible quantity is kept only when the model reports one`() {
+        val dishes = AiResponseParser.parseDishes(
+            "{\"dishes\":[{\"name\":\"Завтрак\",\"ingredients\":[" +
+                "{\"name\":\"йогурт\",\"visibleQuantity\":125}," +
+                "{\"name\":\"банан\",\"visibleQuantity\":null}]}]}"
+        )
+        val ingredients = dishes.single().ingredients
+        assertEquals(125f, ingredients[0].visibleQuantityGrams!!, delta)
+        assertEquals(null, ingredients[1].visibleQuantityGrams)
+    }
+
+    @Test
+    fun `unknown extra keys around dishes do not break parsing`() {
+        val dishes = AiResponseParser.parseDishes(
+            "{\"model\":\"gpt\",\"dishes\":[{\"name\":\"Каша\",\"portion\":\"большая\"," +
+                "\"ingredients\":[{\"name\":\"Овсянка\",\"source\":\"USDA\"}]}],\"note\":\"ok\"}"
+        )
+        assertEquals("Каша", dishes.single().dishName)
+    }
+
+    @Test
+    fun `garbage multi-dish response is rejected loudly`() {
+        assertThrows(AiResponseParser.MalformedResponse::class.java) {
+            AiResponseParser.parseDishes("Не могу определить блюда на этом фото.")
+        }
     }
 
     @Test

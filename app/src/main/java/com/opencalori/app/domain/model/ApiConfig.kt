@@ -27,16 +27,51 @@ data class ApiValidationResult(
     val message: String = ""
 )
 
-/** Result of the first AI recognition pass: dish name + ingredient list. */
+/**
+ * Result of the first AI recognition pass for a single visually separate dish.
+ *
+ * A photo may contain several of them; the pipeline keeps every dish separate all the way
+ * into the diary instead of merging names into one string.
+ */
 data class RecognizedDish(
     val dishName: String,
-    val ingredients: List<RecognizedIngredient>
-)
+    val ingredients: List<RecognizedIngredient>,
+    /** Model self-reported confidence in 0..1, or null when the model did not report one. */
+    val confidence: Float? = null,
+    val id: String = UUID.randomUUID().toString()
+) {
+    /** True when the model admitted it could not name the dish. */
+    val isUnknown: Boolean
+        get() = dishName.isBlank() || UNKNOWN_NAMES.any { dishName.trim().lowercase() == it }
+
+    /** Low confidence is surfaced in the UI so the user double-checks before saving. */
+    val isLowConfidence: Boolean get() = confidence != null && confidence < LOW_CONFIDENCE
+
+    companion object {
+        const val LOW_CONFIDENCE = 0.6f
+        const val UNKNOWN_LABEL = "\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u043e\u0435 \u0431\u043b\u044e\u0434\u043e"
+        private val UNKNOWN_NAMES = setOf(
+            "unknown",
+            "\u043d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u043e",
+            "\u043d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u043e\u0435 \u0431\u043b\u044e\u0434\u043e",
+            "\u043d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u043f\u0440\u0435\u0434\u0435\u043b\u0438\u0442\u044c"
+        )
+    }
+}
 
 data class RecognizedIngredient(
     val name: String,
-    val id: String = UUID.randomUUID().toString()
-)
+    val id: String = UUID.randomUUID().toString(),
+    val confidence: Float? = null,
+    /**
+     * Weight the model claims to actually see, in grams. Almost always null: the contract
+     * forbids inventing grams, and a null here means "the user has to weigh it".
+     */
+    val visibleQuantityGrams: Float? = null
+) {
+    val isLowConfidence: Boolean
+        get() = confidence != null && confidence < RecognizedDish.LOW_CONFIDENCE
+}
 
 /**
  * Result of the second AI estimation pass (after user correction of ingredients).

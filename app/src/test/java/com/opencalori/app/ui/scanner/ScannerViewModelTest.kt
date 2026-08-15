@@ -293,4 +293,223 @@ class ScannerViewModelTest {
         assertEquals(targetDay, vm.uiState.value.targetDate.toEpochDay())
         assertFalse(vm.uiState.value.isLocalDraft)
     }
+
+    // ---- Several dishes on one photo ----
+
+    private fun pasta() = EstimatedIngredient(
+        name = "Паста",
+        rawGrams = 180f,
+        cookedGrams = 180f,
+        caloriesPer100g = 160f,
+        proteinPer100g = 6f,
+        fatPer100g = 5f,
+        carbsPer100g = 24f
+    )
+
+    private fun cucumber() = EstimatedIngredient(
+        name = "Огурец",
+        rawGrams = 100f,
+        cookedGrams = 100f,
+        caloriesPer100g = 15f,
+        proteinPer100g = 0.8f,
+        fatPer100g = 0.1f,
+        carbsPer100g = 2.8f
+    )
+
+    private fun recognizedDishes() = listOf(
+        RecognizedDish(
+            dishName = "Паста карбонара",
+            ingredients = listOf(RecognizedIngredient("паста"), RecognizedIngredient("бекон")),
+            confidence = 0.86f
+        ),
+        RecognizedDish(
+            dishName = "Овощной салат",
+            ingredients = listOf(RecognizedIngredient("огурец")),
+            confidence = 0.81f
+        )
+    )
+
+    private fun seedMultiDishNutrition() {
+        ai.dishesResult = Result.success(recognizedDishes())
+        ai.nutritionByDish["Паста карбонара"] = Result.success(listOf(pasta()))
+        ai.nutritionByDish["Овощной салат"] = Result.success(listOf(cucumber()))
+    }
+
+    @Test
+    fun `several dishes open the dish list before any estimation`() = runTest {
+        seedMultiDishNutrition()
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        vm.onPhotoTaken(photo())
+        advanceUntilIdle()
+
+        assertEquals(ScannerStage.REVIEW_DISHES, vm.uiState.value.stage)
+        assertEquals(2, vm.uiState.value.dishes.size)
+        assertTrue(vm.uiState.value.hasMultipleDishes)
+        assertEquals(0, ai.estimateCalls)
+    }
+
+    @Test
+    fun `a single dish skips the list step`() = runTest {
+        ai.dishResult = Result.success(dish())
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        vm.onPhotoTaken(photo())
+        advanceUntilIdle()
+
+        assertEquals(ScannerStage.REVIEW_DISH, vm.uiState.value.stage)
+        assertFalse(vm.uiState.value.hasMultipleDishes)
+    }
+
+    @Test
+    fun `every dish is reviewed and estimated on its own`() = runTest {
+        seedMultiDishNutrition()
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.onPhotoTaken(photo())
+        advanceUntilIdle()
+
+        vm.confirmDishList()
+        assertEquals(ScannerStage.REVIEW_DISH, vm.uiState.value.stage)
+        assertEquals("Паста карбонара", vm.uiState.value.dish?.dishName)
+
+        // First "next" only moves to the second dish - nothing is estimated yet.
+        vm.confirmIngredientsAndEstimate()
+        advanceUntilIdle()
+        assertEquals(1, vm.uiState.value.currentDishIndex)
+        assertEquals(0, ai.estimateCalls)
+
+        vm.confirmIngredientsAndEstimate()
+        advanceUntilIdle()
+
+        assertEquals(ScannerStage.REVIEW_GRAMS, vm.uiState.value.stage)
+        assertEquals(2, ai.estimateCalls)
+        assertEquals(listOf("Паста карбонара", "Овощной салат"), ai.estimatedDishNames)
+        assertEquals(listOf("Паста", "Огурец"), vm.uiState.value.estimated.map { it.name })
+    }
+
+    @Test
+    fun `each dish becomes its own diary entry inside the same meal`() = runTest {
+        seedMultiDishNutrition()
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.onPhotoTaken(photo())
+        advanceUntilIdle()
+        vm.confirmDishList()
+        vm.confirmIngredientsAndEstimate()
+        advanceUntilIdle()
+        vm.confirmIngredientsAndEstimate()
+        advanceUntilIdle()
+        vm.proceedToFinal()
+        advanceUntilIdle()
+        vm.saveMeal()
+        advanceUntilIdle()
+
+        assertEquals(2, meals.addCalls.size)
+        assertEquals(listOf("Паста карбонара", "Овощной салат"), meals.addedDishNames)
+        assertEquals(2, meals.meals.value.size)
+        assertTrue(meals.meals.value.all { it.mealType == vm.uiState.value.mealType })
+        assertTrue(meals.addCalls.all { it.first == targetDay })
+    }
+
+    @Test
+    fun `a deleted dish never reaches the diary`() = runTest {
+        seedMultiDishNutrition()
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.onPhotoTaken(photo())
+        advanceUntilIdle()
+
+        vm.removeDish(1)
+        vm.confirmDishList()
+        vm.confirmIngredientsAndEstimate()
+        advanceUntilIdle()
+        vm.proceedToFinal()
+        advanceUntilIdle()
+        vm.saveMeal()
+        advanceUntilIdle()
+
+        assertEquals(1, ai.estimateCalls)
+        assertEquals(listOf("Паста карбонара"), meals.addedDishNames)
+    }
+
+    @Test
+    fun `a manually added dish is kept and can be renamed`() = runTest {
+        seedMultiDishNutrition()
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.onPhotoTaken(photo())
+        advanceUntilIdle()
+
+        vm.addDish("Компот")
+        vm.renameDish(0, "Карбонара")
+        vm.markDishUnknown(1)
+
+        val dishes = vm.uiState.value.dishes
+        assertEquals(3, dishes.size)
+        assertEquals("Карбонара", dishes[0].name)
+        assertTrue(dishes[1].isUnknown)
+        assertEquals("Компот", dishes[2].name)
+    }
+
+    @Test
+    fun `grams edits address the right dish`() = runTest {
+        seedMultiDishNutrition()
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.onPhotoTaken(photo())
+        advanceUntilIdle()
+        vm.confirmDishList()
+        vm.confirmIngredientsAndEstimate()
+        advanceUntilIdle()
+        vm.confirmIngredientsAndEstimate()
+        advanceUntilIdle()
+
+        // Flat index 1 is the first product of the second dish.
+        vm.setGrams(1, 250f)
+
+        assertEquals(180f, vm.uiState.value.dishes[0].estimated.single().cookedGrams, 0.01f)
+        assertEquals(250f, vm.uiState.value.dishes[1].estimated.single().cookedGrams, 0.01f)
+    }
+
+    @Test
+    fun `a product without weight blocks saving`() = runTest {
+        ai.dishResult = Result.success(dish())
+        ai.nutritionResult = Result.success(listOf(pasta().copy(rawGrams = 0f, cookedGrams = 0f)))
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.onPhotoTaken(photo())
+        advanceUntilIdle()
+        vm.confirmIngredientsAndEstimate()
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.canSave)
+        vm.setGrams(0, 120f)
+        assertTrue(vm.uiState.value.canSave)
+    }
+
+    @Test
+    fun `AI-only mode never produces a local draft or catalogue match`() = runTest {
+        seedProducts()
+        dishes.catalogue.value = listOf(
+            Dish(10, "Паста карбонара", listOf("carbonara"), emptyList(), 280f, 210f, 11f, 12f, 22f)
+        )
+        seedMultiDishNutrition()
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.onPhotoTaken(photo())
+        advanceUntilIdle()
+        vm.confirmDishList()
+        vm.confirmIngredientsAndEstimate()
+        advanceUntilIdle()
+        vm.confirmIngredientsAndEstimate()
+        advanceUntilIdle()
+
+        assertEquals(ScannerStage.REVIEW_GRAMS, vm.uiState.value.stage)
+        assertFalse(vm.uiState.value.isLocalDraft)
+        assertEquals(null, vm.uiState.value.localDish)
+        assertTrue(vm.uiState.value.unmatchedIngredients.isEmpty())
+    }
 }

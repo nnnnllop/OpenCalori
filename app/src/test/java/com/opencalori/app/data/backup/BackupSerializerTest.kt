@@ -134,6 +134,60 @@ class BackupSerializerTest {
     }
 
     @Test
+    fun `dish titles survive export and import`() {
+        val withDishes = snapshot().copy(
+            meals = listOf(
+                Meal(
+                    id = 1,
+                    dateEpochDay = 20_100,
+                    mealType = MealType.LUNCH,
+                    dishName = "Паста карбонара",
+                    items = listOf(
+                        FoodItem(id = 1, name = "Паста", grams = 180f, caloriesPer100g = 160f, proteinPer100g = 6f, fatPer100g = 5f, carbsPer100g = 24f)
+                    )
+                ),
+                Meal(
+                    id = 2,
+                    dateEpochDay = 20_100,
+                    mealType = MealType.LUNCH,
+                    dishName = "Овощной салат",
+                    items = listOf(
+                        FoodItem(id = 2, name = "Огурец", grams = 100f, caloriesPer100g = 15f, proteinPer100g = 0.8f, fatPer100g = 0.1f, carbsPer100g = 2.8f)
+                    )
+                )
+            )
+        )
+
+        val restored = BackupSerializer.decode(BackupSerializer.encode(withDishes)).meals
+
+        assertEquals(2, restored.size)
+        assertEquals(listOf("Паста карбонара", "Овощной салат"), restored.map { it.dishName })
+        assertTrue(restored.all { it.mealType == MealType.LUNCH })
+    }
+
+    @Test
+    fun `an old backup without dish titles still imports`() {
+        val text = "{\"formatVersion\":1,\"meals\":[{\"dateEpochDay\":20000,\"mealType\":\"BREAKFAST\"," +
+            "\"items\":[{\"name\":\"Каша\",\"grams\":200,\"caloriesPer100g\":90,\"proteinPer100g\":3," +
+            "\"fatPer100g\":1,\"carbsPer100g\":15}]}]}"
+
+        val meal = BackupSerializer.decode(text).meals.single()
+
+        assertEquals(null, meal.dishName)
+        assertEquals("Каша", meal.items.single().name)
+        // Legacy entries stay visible under the meal name instead of disappearing.
+        assertEquals(MealType.BREAKFAST.label, meal.displayName)
+    }
+
+    @Test
+    fun `a blank dish title is normalised to none`() {
+        val text = "{\"formatVersion\":1,\"meals\":[{\"dateEpochDay\":20000,\"mealType\":\"LUNCH\"," +
+            "\"dishName\":\"   \",\"items\":[]}]}"
+
+        assertEquals(null, BackupSerializer.decode(text).meals.single().dishName)
+    }
+
+    @Test
     fun `garbage input is rejected`() {
         assertThrows(Exception::class.java) { BackupSerializer.decode("это не json") }
     }

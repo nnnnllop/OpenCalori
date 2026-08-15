@@ -156,17 +156,7 @@ fun DashboardScreen(
                 )
             }
 
-            item {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Блюда", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            if (state.meals.isEmpty()) {
+            if (state.sections.isEmpty()) {
                 item {
                     EmptyDiaryCard(
                         onScan = {
@@ -181,13 +171,27 @@ fun DashboardScreen(
                     )
                 }
             } else {
-                items(state.meals, key = { it.id }) { meal ->
-                    DishCard(
-                        meal = meal,
-                        onDeleteMeal = { viewModel.deleteMeal(meal) },
-                        onDeleteItem = { item -> viewModel.deleteFoodItem(meal, item) },
-                        onEditItem = { item -> editingItem = item }
-                    )
+                // Date -> meal -> dish -> products. The meal is a plain section header, the dish
+                // is a card, and the products live inside the dish - never a card in a card.
+                state.sections.forEach { section ->
+                    item(key = "section-" + section.mealType.name) {
+                        MealSectionHeader(section)
+                    }
+                    items(section.dishes, key = { it.id }) { meal ->
+                        DishCard(
+                            meal = meal,
+                            onDeleteMeal = { viewModel.deleteMeal(meal) },
+                            onDeleteItem = { item -> viewModel.deleteFoodItem(meal, item) },
+                            onEditItem = { item -> editingItem = item }
+                        )
+                    }
+                    item(key = "section-add-" + section.mealType.name) {
+                        TextButton(onClick = { addFoodSheetVisible = true }) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Добавить блюдо в " + section.mealType.label.lowercase())
+                        }
+                    }
                 }
             }
         }
@@ -396,6 +400,38 @@ private fun EmptyDiaryCard(
     }
 }
 
+/** The meal level of the diary: a header, not a card, so a dish never sits in a card in a card. */
+@Composable
+private fun MealSectionHeader(section: DiarySection) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            section.mealType.label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        // Column, not Row: kcal and macros must be free to wrap at font scale 1.5.
+        Text(
+            section.calories.toInt().toString() + " ккал • " + section.dishes.size + " " +
+                dishCountLabel(section.dishes.size),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            "Б " + section.protein.toInt() + " г • Ж " + section.fat.toInt() + " г • У " +
+                section.carbs.toInt() + " г",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+private fun dishCountLabel(count: Int): String = when {
+    count % 100 in 11..14 -> "блюд"
+    count % 10 == 1 -> "блюдо"
+    count % 10 in 2..4 -> "блюда"
+    else -> "блюд"
+}
+
 @Composable
 private fun MealCard(
     meal: Meal,
@@ -570,21 +606,22 @@ private fun DishCard(
                         text = meal.displayName,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1,
+                        // A long dish name wraps to two lines instead of pushing the kcal away.
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = meal.mealType.label + " · " + meal.items.size + " " + productCountLabel(meal.items.size),
+                        text = meal.items.size.toString() + " " + productCountLabel(meal.items.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Text(
+                        text = meal.totalCalories.toInt().toString() + " ккал",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
-                Text(
-                    text = meal.totalCalories.toInt().toString() + " ккал",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
                 IconButton(onClick = { expanded = !expanded }) {
                     Icon(
                         imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,

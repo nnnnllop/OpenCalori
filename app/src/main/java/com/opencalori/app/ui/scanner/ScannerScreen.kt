@@ -1,4 +1,4 @@
-﻿package com.opencalori.app.ui.scanner
+package com.opencalori.app.ui.scanner
 
 import android.content.Intent
 import android.net.Uri
@@ -12,29 +12,33 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FlashAuto
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
@@ -42,6 +46,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -71,9 +76,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -85,6 +93,7 @@ import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
 import com.opencalori.app.domain.model.MealType
+import com.opencalori.app.domain.model.NutritionSourceMode
 import com.opencalori.app.ui.components.NumberField
 import com.opencalori.app.ui.theme.AppShapes
 import com.opencalori.app.ui.util.NumberFormat
@@ -97,7 +106,7 @@ import java.util.Locale
 private fun scannerTargetDateLabel(date: LocalDate): String {
     if (date == LocalDate.now()) return "Запись: сегодня"
     val formatter = DateTimeFormatter.ofPattern("d MMMM", Locale("ru"))
-    return "Запись: ${date.format(formatter)}"
+    return "Запись: " + date.format(formatter)
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
@@ -118,11 +127,13 @@ fun ScannerScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Сканер еды")
+                        Text("Сканер еды", maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
                             scannerTargetDateLabel(state.targetDate),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 },
@@ -160,6 +171,7 @@ fun ScannerScreen(
                     onCancel = viewModel::cancelAnalysis
                 )
 
+                ScannerStage.REVIEW_DISHES -> ReviewDishesStage(state, viewModel)
                 ScannerStage.REVIEW_DISH -> ReviewDishStage(state, viewModel)
                 ScannerStage.REVIEW_GRAMS -> ReviewGramsStage(state, viewModel)
                 ScannerStage.REVIEW_FINAL -> ReviewFinalStage(state, viewModel)
@@ -344,21 +356,9 @@ private fun CameraCaptureView(
                 modifier = Modifier.fillMaxSize()
             )
 
-            Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .fillMaxWidth(0.86f)
-                    .fillMaxHeight(0.58f),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .border(2.dp, androidx.compose.ui.graphics.Color.White, AppShapes.Medium)
-                )
-                Text("Снимите блюдо целиком", color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold)
-                Text("Если блюд несколько, не перекрывайте их", color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.bodySmall)
-            }
+            // Guide overlay only: the captured photo is never cropped to this frame, so a
+            // second dish just outside it is still sent to the model.
+            FramingOverlay(Modifier.fillMaxSize())
 
             IconButton(
                 onClick = {
@@ -372,6 +372,7 @@ private fun CameraCaptureView(
                     .align(Alignment.TopEnd)
                     .statusBarsPadding()
                     .padding(12.dp)
+                    .size(48.dp)
             ) {
                 Icon(
                     when (flashMode) {
@@ -379,16 +380,35 @@ private fun CameraCaptureView(
                         ImageCapture.FLASH_MODE_AUTO -> Icons.Default.FlashAuto
                         else -> Icons.Default.FlashOff
                     },
+                    tint = Color.White,
                     contentDescription = when (flashMode) {
-                        ImageCapture.FLASH_MODE_ON -> "\u0412\u0441\u043f\u044b\u0448\u043a\u0430 \u0432\u043a\u043b\u044e\u0447\u0435\u043d\u0430. \u041d\u0430\u0436\u043c\u0438\u0442\u0435, \u0447\u0442\u043e\u0431\u044b \u0432\u044b\u043a\u043b\u044e\u0447\u0438\u0442\u044c"
-                        ImageCapture.FLASH_MODE_AUTO -> "\u0410\u0432\u0442\u043e\u0432\u0441\u043f\u044b\u0448\u043a\u0430. \u041d\u0430\u0436\u043c\u0438\u0442\u0435, \u0447\u0442\u043e\u0431\u044b \u0432\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0432\u0441\u043f\u044b\u0448\u043a\u0443"
-                        else -> "\u0412\u0441\u043f\u044b\u0448\u043a\u0430 \u0432\u044b\u043a\u043b\u044e\u0447\u0435\u043d\u0430. \u041d\u0430\u0436\u043c\u0438\u0442\u0435, \u0447\u0442\u043e\u0431\u044b \u0432\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0430\u0432\u0442\u043e\u0432\u0441\u043f\u044b\u0448\u043a\u0443"
+                        ImageCapture.FLASH_MODE_ON -> "Вспышка включена. Нажмите, чтобы выключить"
+                        ImageCapture.FLASH_MODE_AUTO -> "Автовспышка. Нажмите, чтобы включить вспышку"
+                        else -> "Вспышка выключена. Нажмите, чтобы включить автовспышку"
                     }
                 )
             }
         }
 
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            Modifier
+                .padding(16.dp)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Hints live below the viewfinder on purpose: at font scale 1.5 they would be
+            // clipped by the preview, and a clipped instruction is no instruction.
+            Text(
+                "Снимите блюдо целиком",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "Если блюд несколько, не перекрывайте их. Рамка — только подсказка, фото не обрезается.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
             Row(
                 Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -397,7 +417,7 @@ private fun CameraCaptureView(
                     FilterChip(
                         selected = mealType == type,
                         onClick = { onMealTypeChange(type) },
-                        label = { Text(type.label) }
+                        label = { Text(type.label, maxLines = 1) }
                     )
                 }
             }
@@ -407,7 +427,7 @@ private fun CameraCaptureView(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onPickFromGallery) {
+                IconButton(onClick = onPickFromGallery, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Default.PhotoLibrary, contentDescription = "Выбрать из галереи")
                 }
 
@@ -453,6 +473,50 @@ private fun CameraCaptureView(
     }
 }
 
+/** Dimmed area plus a centred frame. Pure decoration: it never crops the captured image. */
+@Composable
+private fun FramingOverlay(modifier: Modifier = Modifier) {
+    val scrim = Color.Black.copy(alpha = 0.38f)
+    Column(modifier) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .background(scrim)
+        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .weight(6f)
+        ) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(scrim)
+            )
+            Box(
+                Modifier
+                    .weight(12f)
+                    .fillMaxHeight()
+                    .border(2.dp, Color.White, AppShapes.Medium)
+            )
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(scrim)
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .weight(2f)
+                .background(scrim)
+        )
+    }
+}
+
 @Composable
 private fun PhotoPreview(photo: ByteArray?, modifier: Modifier = Modifier) {
     if (photo == null) return
@@ -470,10 +534,10 @@ private fun PhotoPreview(photo: ByteArray?, modifier: Modifier = Modifier) {
 
 @Composable
 private fun ScanFlowProgress(currentStep: Int) {
-    val steps = listOf("\u0421\u043e\u0441\u0442\u0430\u0432", "\u0412\u0435\u0441", "\u0418\u0442\u043e\u0433")
+    val steps = listOf("Блюда", "Состав", "Вес", "Итог")
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         steps.forEachIndexed { index, label ->
             val reached = index < currentStep
@@ -483,8 +547,8 @@ private fun ScanFlowProgress(currentStep: Int) {
                 color = if (reached) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -497,6 +561,7 @@ private fun ScanFlowProgress(currentStep: Int) {
                         label,
                         style = MaterialTheme.typography.labelMedium,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         color = if (reached) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -504,11 +569,12 @@ private fun ScanFlowProgress(currentStep: Int) {
         }
     }
 }
+
 @Composable
 private fun AnalyzingStage(state: ScannerUiState, onCancel: () -> Unit) {
     val firstStage = state.stage == ScannerStage.ANALYZING_1
-    val step = if (firstStage) 1 else 2
-    val progress = if (firstStage) 0.5f else 0.85f
+    val progress = if (firstStage) 0.4f else 0.8f
+    val localMode = state.nutritionSourceMode != NutritionSourceMode.AI_ONLY
     Column(
         Modifier
             .fillMaxSize()
@@ -521,17 +587,23 @@ private fun AnalyzingStage(state: ScannerUiState, onCancel: () -> Unit) {
         CircularProgressIndicator()
         Spacer(Modifier.height(16.dp))
         Text(
-            if (firstStage) "\u041e\u043f\u0440\u0435\u0434\u0435\u043b\u044f\u044e блюдо и состав…" else "\u0421\u043e\u043f\u043e\u0441\u0442\u0430\u0432\u043b\u044f\u044e с локальной базой…",
+            when {
+                firstStage -> "Ищу блюда и состав…"
+                localMode -> "Сопоставляю с локальной базой…"
+                else -> "Оцениваю порции и КБЖУ…"
+            },
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(12.dp))
         LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
         Text(
-            "Шаг $step из 2 · обычно 5–15 секунд",
+            if (firstStage) "Обычно 5–15 секунд" else "Считаю каждое блюдо отдельно",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(16.dp))
         TextButton(onClick = onCancel) { Text("Отменить") }
@@ -558,58 +630,191 @@ private fun ErrorStage(
         Text(
             message ?: "Неизвестная ошибка",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(24.dp))
         if (canRetry) {
-            Button(onClick = onRetry) {
+            Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Default.Refresh, null)
                 Spacer(Modifier.size(8.dp))
                 Text("Повторить с этим фото")
             }
             Spacer(Modifier.height(8.dp))
         }
-        OutlinedButton(onClick = onOpenSettings) {
+        OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.Key, null)
             Spacer(Modifier.size(8.dp))
-            Text("\u041d\u0430\u0441\u0442\u0440\u043e\u0438\u0442\u044c \u0418\u0418")
+            Text("Настроить ИИ")
         }
         Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = onRetake) { Text("\u0421\u0434\u0435\u043b\u0430\u0442\u044c \u043d\u043e\u0432\u043e\u0435 \u0444\u043e\u0442\u043e") }
+        OutlinedButton(onClick = onRetake, modifier = Modifier.fillMaxWidth()) {
+            Text("Сделать новое фото")
+        }
     }
 }
 
+/** Stage 3: the list of recognised dishes. Each one can be renamed, dropped or added by hand. */
+@Composable
+private fun ReviewDishesStage(state: ScannerUiState, viewModel: ScannerViewModel) {
+    var newDish by remember { mutableStateOf("") }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .imePadding()
+    ) {
+        ScanFlowProgress(currentStep = 1)
+        Spacer(Modifier.height(16.dp))
+        PhotoPreview(state.photo)
+        Spacer(Modifier.height(12.dp))
+        Text("Найдено блюд: " + state.dishes.size, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            "Проверьте список. Каждое блюдо попадёт в дневник отдельной записью со своими продуктами.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        state.error?.let { message ->
+            Spacer(Modifier.height(8.dp))
+            Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+        Spacer(Modifier.height(12.dp))
+
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            itemsIndexed(state.dishes, key = { _, dish -> dish.id }) { index, dish ->
+                Card(Modifier.fillMaxWidth(), shape = AppShapes.Small) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = dish.name,
+                            onValueChange = { viewModel.renameDish(index, it) },
+                            label = { Text("Название блюда") },
+                            modifier = Modifier.fillMaxWidth(),
+                            maxLines = 2
+                        )
+                        Text(
+                            ingredientSummary(dish),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (dish.isLowConfidence) {
+                            Text(
+                                "ИИ не уверен в этом блюде — проверьте название и состав.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        // Column, not Row: three actions never fit one line at 360 dp / font 1.5.
+                        Column {
+                            TextButton(onClick = { viewModel.reviewDish(index) }) {
+                                Icon(Icons.Default.Edit, null)
+                                Spacer(Modifier.size(8.dp))
+                                Text("Проверить состав")
+                            }
+                            TextButton(onClick = { viewModel.markDishUnknown(index) }) {
+                                Text("Отметить как неизвестное")
+                            }
+                            TextButton(onClick = { viewModel.removeDish(index) }) {
+                                Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                                Spacer(Modifier.size(8.dp))
+                                Text("Удалить блюдо", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newDish,
+                        onValueChange = { newDish = it },
+                        placeholder = { Text("Добавить блюдо вручную") },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 2
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.addDish(newDish)
+                            newDish = ""
+                        },
+                        enabled = newDish.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, null)
+                        Spacer(Modifier.size(8.dp))
+                        Text("Добавить блюдо")
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = viewModel::confirmDishList,
+            enabled = state.dishes.isNotEmpty(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+        ) {
+            Text("Перейти к составу")
+        }
+    }
+}
+
+private fun ingredientSummary(dish: DishDraft): String {
+    if (dish.ingredients.isEmpty()) return "Состав пока пуст — добавьте продукты вручную"
+    return "Продукты: " + dish.ingredients.joinToString { it.name }
+}
+
+/** Stage 4: ingredients of one dish. */
 @Composable
 private fun ReviewDishStage(state: ScannerUiState, viewModel: ScannerViewModel) {
     var newItem by remember { mutableStateOf("") }
-    val dish = state.dish ?: return
+    val dish = state.currentDish ?: return
     val nutritionSourceDescription = when (state.nutritionSourceMode) {
-        com.opencalori.app.domain.model.NutritionSourceMode.AI_ONLY -> "КБЖУ и граммовки оценит ИИ по фото и подтверждённому составу."
-        com.opencalori.app.domain.model.NutritionSourceMode.LOCAL_DATABASE -> "Состав определит ИИ, а КБЖУ найдём в локальном каталоге."
-        com.opencalori.app.domain.model.NutritionSourceMode.HYBRID -> "ИИ определит блюдо, каталог поможет уточнить КБЖУ."
+        NutritionSourceMode.AI_ONLY -> "КБЖУ и граммовки оценит ИИ по фото и подтверждённому составу."
+        NutritionSourceMode.LOCAL_DATABASE -> "Состав определит ИИ, а КБЖУ найдём в локальном каталоге."
+        NutritionSourceMode.HYBRID -> "ИИ определит блюдо, каталог поможет уточнить КБЖУ."
     }
     val nutritionAction = when (state.nutritionSourceMode) {
-        com.opencalori.app.domain.model.NutritionSourceMode.AI_ONLY -> "Рассчитать КБЖУ с ИИ"
-        com.opencalori.app.domain.model.NutritionSourceMode.LOCAL_DATABASE -> "Найти КБЖУ в локальной базе"
-        com.opencalori.app.domain.model.NutritionSourceMode.HYBRID -> "Сверить КБЖУ по базе"
+        NutritionSourceMode.AI_ONLY -> "Рассчитать КБЖУ с ИИ"
+        NutritionSourceMode.LOCAL_DATABASE -> "Найти КБЖУ в локальной базе"
+        NutritionSourceMode.HYBRID -> "Сверить КБЖУ по базе"
     }
 
     Column(
         Modifier
             .fillMaxSize()
             .padding(16.dp)
+            .imePadding()
     ) {
-        ScanFlowProgress(currentStep = 1)
+        ScanFlowProgress(currentStep = 2)
         Spacer(Modifier.height(16.dp))
         PhotoPreview(state.photo)
         Spacer(Modifier.height(12.dp))
-        Text("\u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 блюдо и состав", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+
+        Text("Проверьте блюдо и состав", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        if (state.hasMultipleDishes) {
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AssistChip(
+                    onClick = viewModel::backToDishList,
+                    label = { Text("Блюдо " + state.dishPositionLabel, maxLines = 1) }
+                )
+                Spacer(Modifier.size(8.dp))
+                TextButton(onClick = viewModel::backToDishList) { Text("К списку блюд") }
+            }
+        }
         Text(
             nutritionSourceDescription,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        if (state.nutritionSourceMode != com.opencalori.app.domain.model.NutritionSourceMode.AI_ONLY && state.isLocalDraft) {
+        state.error?.let { message ->
+            Spacer(Modifier.height(8.dp))
+            Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+        // Local-catalogue wording only exists outside AI-only mode.
+        if (state.nutritionSourceMode != NutritionSourceMode.AI_ONLY && state.isLocalDraft) {
             Spacer(Modifier.height(12.dp))
             Card(
                 Modifier.fillMaxWidth(),
@@ -617,12 +822,12 @@ private fun ReviewDishStage(state: ScannerUiState, viewModel: ScannerViewModel) 
                 shape = AppShapes.Small
             ) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 черновик", fontWeight = FontWeight.Bold)
+                    Text("Локальный черновик", fontWeight = FontWeight.Bold)
                     Text(
                         if (state.unmatchedIngredients.isEmpty()) {
-                            "\u0411\u043b\u044e\u0434\u043e не найдено в общем каталоге. Оно не будет добавлено туда автоматически."
+                            "Блюдо не найдено в общем каталоге. Оно не будет добавлено туда автоматически."
                         } else {
-                            "\u041d\u0435 найдено в локальной базе: " + state.unmatchedIngredients.joinToString()
+                            "Не найдено в локальной базе: " + state.unmatchedIngredients.joinToString()
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -633,11 +838,11 @@ private fun ReviewDishStage(state: ScannerUiState, viewModel: ScannerViewModel) 
         Spacer(Modifier.height(16.dp))
 
         OutlinedTextField(
-            value = dish.dishName,
+            value = dish.name,
             onValueChange = viewModel::updateDishName,
             label = { Text("Название блюда") },
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true
+            maxLines = 2
         )
         Spacer(Modifier.height(12.dp))
 
@@ -651,9 +856,17 @@ private fun ReviewDishStage(state: ScannerUiState, viewModel: ScannerViewModel) 
                         value = item.name,
                         onValueChange = { viewModel.updateIngredient(index, it) },
                         modifier = Modifier.weight(1f),
-                        singleLine = true
+                        supportingText = if (item.isLowConfidence) {
+                            { Text("Низкая уверенность ИИ") }
+                        } else {
+                            null
+                        },
+                        maxLines = 2
                     )
-                    IconButton(onClick = { viewModel.removeIngredient(index) }) {
+                    IconButton(
+                        onClick = { viewModel.removeIngredient(index) },
+                        modifier = Modifier.size(48.dp)
+                    ) {
                         Icon(
                             Icons.Default.Delete,
                             contentDescription = "Удалить " + item.name,
@@ -669,13 +882,14 @@ private fun ReviewDishStage(state: ScannerUiState, viewModel: ScannerViewModel) 
                         onValueChange = { newItem = it },
                         placeholder = { Text("Добавить ингредиент") },
                         modifier = Modifier.weight(1f),
-                        singleLine = true
+                        maxLines = 2
                     )
                     IconButton(
                         onClick = {
                             viewModel.addIngredient(newItem)
                             newItem = ""
-                        }
+                        },
+                        modifier = Modifier.size(48.dp)
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "Добавить ингредиент")
                     }
@@ -683,24 +897,29 @@ private fun ReviewDishStage(state: ScannerUiState, viewModel: ScannerViewModel) 
             }
         }
 
+        Spacer(Modifier.height(8.dp))
         Button(
             onClick = viewModel::confirmIngredientsAndEstimate,
             enabled = dish.ingredients.any { it.name.isNotBlank() },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
         ) {
-            Text(nutritionAction)
+            Text(if (state.isLastDish) nutritionAction else "Далее: следующее блюдо")
         }
     }
 }
 
+/** Stage 6: grams per product, grouped by dish so nothing gets mixed up. */
 @Composable
 private fun ReviewGramsStage(state: ScannerUiState, viewModel: ScannerViewModel) {
     Column(
         Modifier
             .fillMaxSize()
             .padding(16.dp)
+            .imePadding()
     ) {
-        ScanFlowProgress(currentStep = 2)
+        ScanFlowProgress(currentStep = 3)
         Spacer(Modifier.height(16.dp))
         Text("Проверьте граммовки", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(
@@ -710,153 +929,177 @@ private fun ReviewGramsStage(state: ScannerUiState, viewModel: ScannerViewModel)
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(12.dp))
-        when {
-            state.nutritionSourceMode != com.opencalori.app.domain.model.NutritionSourceMode.AI_ONLY && state.localDish != null -> {
-                Card(
-                    Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                    shape = AppShapes.Small
-                ) {
-                    Text(
-                        "\u041d\u0430\u0439\u0434\u0435\u043d\u043e локальное блюдо: " + state.localDish.name,
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
+        if (state.nutritionSourceMode != NutritionSourceMode.AI_ONLY && state.isLocalDraft) {
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                shape = AppShapes.Small
+            ) {
+                Text(
+                    "Локальный черновик: в общий каталог ничего не добавляется. КБЖУ ниже взяты из найденных локальных продуктов.",
+                    modifier = Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
             }
-            state.nutritionSourceMode != com.opencalori.app.domain.model.NutritionSourceMode.AI_ONLY && state.isLocalDraft -> {
-                Card(
-                    Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                    shape = AppShapes.Small
-                ) {
-                    Text(
-                        "\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 черновик: в общий каталог ничего не добавляется. КБЖУ ниже взяты из найденных локальных продуктов.",
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-            }
+            Spacer(Modifier.height(12.dp))
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             FilterChip(
                 selected = state.gramsEditMode == GramsEditMode.COOKED,
                 onClick = { viewModel.setGramsEditMode(GramsEditMode.COOKED) },
-                label = { Text("Готовый вес") }
+                label = { Text("Готовый вес", maxLines = 1) }
             )
             FilterChip(
                 selected = state.gramsEditMode == GramsEditMode.RAW,
                 onClick = { viewModel.setGramsEditMode(GramsEditMode.RAW) },
-                label = { Text("Сырой/сухой вес") }
+                label = { Text("Сырой/сухой вес", maxLines = 1) }
             )
         }
         Spacer(Modifier.height(12.dp))
 
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            itemsIndexed(state.estimated, key = { _, item -> item.id }) { index, item ->
-                Card(
-                    Modifier.fillMaxWidth(),
-                    shape = AppShapes.Small,
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Column(Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+            state.dishes.forEachIndexed { dishIndex, dish ->
+                if (dish.estimated.isEmpty()) return@forEachIndexed
+                item(key = "dish-" + dish.id) {
+                    DishSectionHeader(
+                        name = dish.name,
+                        subtitle = dish.estimated.size.toString() + " " + productWord(dish.estimated.size) +
+                            " • " + dish.totalCalories.toInt() + " ккал"
+                    )
+                }
+                itemsIndexed(
+                    items = dish.estimated,
+                    key = { _, item -> dish.id + "-" + item.id }
+                ) { itemIndex, item ->
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        shape = AppShapes.Small,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        item.name,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    if (item.notes.isNotBlank()) {
+                                        Text(
+                                            item.notes,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { viewModel.removeEstimatedFor(dishIndex, itemIndex) },
+                                    modifier = Modifier.size(48.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Убрать " + item.name,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                val (gramsValue, gramsLabel) = when (state.gramsEditMode) {
+                                    GramsEditMode.COOKED -> item.cookedGrams to "Готовый, г"
+                                    GramsEditMode.RAW -> item.rawGrams to "Сырой, г"
+                                }
+                                NumberField(
+                                    label = gramsLabel,
+                                    value = gramsValue,
+                                    onValueChange = { viewModel.setGramsFor(dishIndex, itemIndex, it) },
+                                    resetKey = item.id + state.gramsEditMode.name,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                NumberField(
+                                    label = "Ккал/100 г",
+                                    value = item.caloriesPer100g,
+                                    onValueChange = {
+                                        viewModel.updateEstimatedFor(
+                                            dishIndex,
+                                            itemIndex,
+                                            item.copy(caloriesPer100g = it)
+                                        )
+                                    },
+                                    resetKey = item.id,
+                                    enabled = false,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            Spacer(Modifier.height(4.dp))
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                NumberField(
+                                    label = "Б",
+                                    value = item.proteinPer100g,
+                                    onValueChange = {
+                                        viewModel.updateEstimatedFor(dishIndex, itemIndex, item.copy(proteinPer100g = it))
+                                    },
+                                    resetKey = item.id,
+                                    enabled = false,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                NumberField(
+                                    label = "Ж",
+                                    value = item.fatPer100g,
+                                    onValueChange = {
+                                        viewModel.updateEstimatedFor(dishIndex, itemIndex, item.copy(fatPer100g = it))
+                                    },
+                                    resetKey = item.id,
+                                    enabled = false,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                NumberField(
+                                    label = "У",
+                                    value = item.carbsPer100g,
+                                    onValueChange = {
+                                        viewModel.updateEstimatedFor(dishIndex, itemIndex, item.copy(carbsPer100g = it))
+                                    },
+                                    resetKey = item.id,
+                                    enabled = false,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
+
                             Text(
-                                item.name,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (item.notes.isNotBlank()) {
-                                Text(
-                                    item.notes,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            IconButton(onClick = { viewModel.removeEstimated(index) }) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = "Убрать " + item.name,
-                                    tint = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(4.dp))
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            val (gramsValue, gramsLabel) = when (state.gramsEditMode) {
-                                GramsEditMode.COOKED -> item.cookedGrams to "Готовый, г"
-                                GramsEditMode.RAW -> item.rawGrams to "Сырой, г"
-                            }
-                            NumberField(
-                                label = gramsLabel,
-                                value = gramsValue,
-                                onValueChange = { viewModel.setGrams(index, it) },
-                                resetKey = item.id.toString() + state.gramsEditMode.name,
-                                modifier = Modifier.weight(1f)
-                            )
-                            NumberField(
-                                label = "Ккал/100 г",
-                                value = item.caloriesPer100g,
-                                onValueChange = {
-                                    viewModel.updateEstimated(index, item.copy(caloriesPer100g = it))
+                                if (item.effectiveGrams > 0f) {
+                                    "Съедено " + NumberFormat.compact(item.effectiveGrams) + " г • " +
+                                        item.totalCalories.toInt() + " ккал"
+                                } else {
+                                    "Укажите вес, чтобы посчитать калории"
                                 },
-                                resetKey = item.id,
-                                enabled = false,
-                                modifier = Modifier.weight(1f)
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (item.effectiveGrams > 0f) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.error
+                                }
                             )
                         }
-                        Spacer(Modifier.height(4.dp))
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            NumberField(
-                                label = "Б",
-                                value = item.proteinPer100g,
-                                onValueChange = { viewModel.updateEstimated(index, item.copy(proteinPer100g = it)) },
-                                resetKey = item.id,
-                                enabled = false,
-                                modifier = Modifier.weight(1f)
-                            )
-                            NumberField(
-                                label = "Ж",
-                                value = item.fatPer100g,
-                                onValueChange = { viewModel.updateEstimated(index, item.copy(fatPer100g = it)) },
-                                resetKey = item.id,
-                                enabled = false,
-                                modifier = Modifier.weight(1f)
-                            )
-                            NumberField(
-                                label = "У",
-                                value = item.carbsPer100g,
-                                onValueChange = { viewModel.updateEstimated(index, item.copy(carbsPer100g = it)) },
-                                resetKey = item.id,
-                                enabled = false,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        Spacer(Modifier.height(6.dp))
-
-                        Text(
-                            "Съедено " + NumberFormat.compact(item.effectiveGrams) + " г • " +
-                                item.totalCalories.toInt() + " ккал",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
                     }
                 }
             }
         }
 
+        Spacer(Modifier.height(8.dp))
         Button(
             onClick = viewModel::proceedToFinal,
-            enabled = state.estimated.isNotEmpty(),
-            modifier = Modifier.fillMaxWidth()
+            enabled = state.canSave,
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
         ) {
             Text("Далее")
         }
@@ -864,17 +1107,47 @@ private fun ReviewGramsStage(state: ScannerUiState, viewModel: ScannerViewModel)
 }
 
 @Composable
+private fun DishSectionHeader(name: String, subtitle: String) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            name,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+private fun productWord(count: Int): String = when {
+    count % 100 in 11..14 -> "продуктов"
+    count % 10 == 1 -> "продукт"
+    count % 10 in 2..4 -> "продукта"
+    else -> "продуктов"
+}
+
+/** Stage 7: the final summary, still grouped per dish. */
+@Composable
 private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel) {
     Column(
         Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        ScanFlowProgress(currentStep = 3)
+        ScanFlowProgress(currentStep = 4)
         Spacer(Modifier.height(16.dp))
-        Text("\u0418\u0442\u043e\u0433\u043e\u0432\u044b\u0439 \u0440\u0430\u0441\u0447\u0451\u0442", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Итоговый расчёт", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(
-            "\u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u044f \u043f\u0435\u0440\u0435\u0434 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u0435\u043c",
+            if (state.hasMultipleDishes) {
+                "Каждое блюдо сохранится отдельной записью в " + state.mealType.label.lowercase() + "."
+            } else {
+                "Проверьте значения перед сохранением"
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -884,7 +1157,7 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Text(
-                "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 AI \u043e\u0440\u0438\u0435\u043d\u0442\u0438\u0440\u043e\u0432\u043e\u0447\u043d\u044b\u0439: \u043f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u043f\u043e\u0440\u0446\u0438\u044e, \u0441\u043e\u0441\u0442\u0430\u0432 \u0438 \u041a\u0411\u0416\u0423 \u043f\u0435\u0440\u0435\u0434 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u0435\u043c.",
+                "Результат ИИ ориентировочный: проверьте порцию, состав и КБЖУ перед сохранением.",
                 modifier = Modifier.padding(12.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -892,33 +1165,47 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
         }
         Spacer(Modifier.height(12.dp))
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            itemsIndexed(state.estimated, key = { _, item -> item.id }) { _, item ->
-                Card(Modifier.fillMaxWidth(), shape = AppShapes.Small) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(item.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(4.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
+            state.dishes.forEachIndexed { _, dish ->
+                if (dish.estimated.isEmpty()) return@forEachIndexed
+                item(key = "final-dish-" + dish.id) {
+                    DishSectionHeader(
+                        name = dish.name,
+                        subtitle = dish.totalCalories.toInt().toString() + " ккал"
+                    )
+                }
+                itemsIndexed(
+                    items = dish.estimated,
+                    key = { _, item -> "final-" + dish.id + "-" + item.id }
+                ) { _, item ->
+                    Card(Modifier.fillMaxWidth(), shape = AppShapes.Small) {
+                        Column(Modifier.padding(12.dp)) {
                             Text(
-                                NumberFormat.compact(item.effectiveGrams) + " \u0433" +
+                                item.name,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            // Column instead of a Row: grams and kcal must never squeeze each other.
+                            Text(
+                                NumberFormat.compact(item.effectiveGrams) + " г" +
                                     if (item.notes.isBlank()) "" else " (" + item.notes + ")",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Text(
-                                item.totalCalories.toInt().toString() + " \u043a\u043a\u0430\u043b",
+                                item.totalCalories.toInt().toString() + " ккал",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
+                            Text(
+                                "Б " + item.totalProtein.toInt() + " • Ж " + item.totalFat.toInt() +
+                                    " • У " + item.totalCarbs.toInt(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                        Text(
-                            "\u0411 " + item.totalProtein.toInt() + " \u2022 \u0416 " + item.totalFat.toInt() +
-                                " \u2022 \u0423 " + item.totalCarbs.toInt(),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }
@@ -927,28 +1214,38 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
             Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
         ) {
-            Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 Text(
                     state.totalCalories.toInt().toString(),
                     style = MaterialTheme.typography.displaySmall,
                     fontWeight = FontWeight.Bold
                 )
-                Text("\u043a\u043a\u0430\u043b \u2022 " + state.mealType.label, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "ккал • " + state.mealType.label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center
+                )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "\u0411 " + state.totalProtein.toInt() + " \u0433 \u2022 \u0416 " + state.totalFat.toInt() +
-                        " \u0433 \u2022 \u0423 " + state.totalCarbs.toInt() + " \u0433",
-                    style = MaterialTheme.typography.bodyMedium
+                    "Б " + state.totalProtein.toInt() + " г • Ж " + state.totalFat.toInt() +
+                        " г • У " + state.totalCarbs.toInt() + " г",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center
                 )
             }
         }
         Spacer(Modifier.height(12.dp))
         Button(
             onClick = viewModel::saveMeal,
-            enabled = state.estimated.isNotEmpty() && !state.saving,
-            modifier = Modifier.fillMaxWidth()
+            enabled = state.canSave && !state.saving,
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
         ) {
-            Text(if (state.saving) "\u0421\u043e\u0445\u0440\u0430\u043d\u044f\u0435\u043c\u2026" else "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0432 \u0434\u043d\u0435\u0432\u043d\u0438\u043a")
+            Text(if (state.saving) "Сохраняем…" else "Сохранить в дневник")
         }
     }
 }

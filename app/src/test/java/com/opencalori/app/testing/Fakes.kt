@@ -90,8 +90,16 @@ class FakeApiConfigStore(initial: ApiConfig = ApiConfig()) : ApiConfigStore {
 class FakeAiRepository : AiRepository {
 
     var validation: ApiValidationResult = ApiValidationResult(ValidationStatus.SUCCESS)
+
+    /** Single-dish answer, wrapped into a one-element list unless [dishesResult] is set. */
     var dishResult: Result<RecognizedDish> = Result.success(RecognizedDish("Блюдо", emptyList()))
+
+    /** Multi-dish answer. Takes precedence over [dishResult] when not null. */
+    var dishesResult: Result<List<RecognizedDish>>? = null
     var nutritionResult: Result<List<EstimatedIngredient>> = Result.success(emptyList())
+
+    /** Per-dish nutrition answers keyed by dish name; falls back to [nutritionResult]. */
+    val nutritionByDish = mutableMapOf<String, Result<List<EstimatedIngredient>>>()
 
     var recognizeCalls = 0
         private set
@@ -99,15 +107,22 @@ class FakeAiRepository : AiRepository {
         private set
     var lastIngredients: List<String> = emptyList()
         private set
+    var lastDescription: String? = null
+        private set
+    val estimatedDishNames = mutableListOf<String>()
 
     override suspend fun validateApi(): ApiValidationResult = validation
 
-    override suspend fun recognizeDish(imageBase64: String): Result<RecognizedDish> {
+    override suspend fun recognizeDishes(imageBase64: String): Result<List<RecognizedDish>> {
         recognizeCalls++
-        return dishResult
+        return dishesResult ?: dishResult.map { listOf(it) }
     }
 
-    override suspend fun recognizeText(description: String): Result<RecognizedDish> = dishResult
+    override suspend fun recognizeTextDishes(description: String): Result<List<RecognizedDish>> {
+        recognizeCalls++
+        lastDescription = description
+        return dishesResult ?: dishResult.map { listOf(it) }
+    }
 
     override suspend fun estimateNutrition(
         imageBase64: String,
@@ -116,7 +131,8 @@ class FakeAiRepository : AiRepository {
     ): Result<List<EstimatedIngredient>> {
         estimateCalls++
         lastIngredients = correctedIngredients
-        return nutritionResult
+        estimatedDishNames += dishName
+        return nutritionByDish[dishName] ?: nutritionResult
     }
 
     override suspend fun estimateTextNutrition(
@@ -125,7 +141,8 @@ class FakeAiRepository : AiRepository {
     ): Result<List<EstimatedIngredient>> {
         estimateCalls++
         lastIngredients = correctedIngredients
-        return nutritionResult
+        estimatedDishNames += dishName
+        return nutritionByDish[dishName] ?: nutritionResult
     }
 }
 

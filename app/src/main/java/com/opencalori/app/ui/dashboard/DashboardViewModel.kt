@@ -24,6 +24,23 @@ import java.time.Clock
 import java.time.LocalDate
 import javax.inject.Inject
 
+/**
+ * One meal of the day with the dishes logged inside it.
+ *
+ * The diary hierarchy is date -> meal -> dish -> products, and this is the meal level: every
+ * [Meal] row with a dish title is one dish, so several dishes can share one meal type.
+ */
+data class DiarySection(
+    val mealType: MealType,
+    val dishes: List<Meal>
+) {
+    val calories: Float get() = dishes.sumOf { it.totalCalories.toDouble() }.toFloat()
+    val protein: Float get() = dishes.sumOf { it.totalProtein.toDouble() }.toFloat()
+    val fat: Float get() = dishes.sumOf { it.totalFat.toDouble() }.toFloat()
+    val carbs: Float get() = dishes.sumOf { it.totalCarbs.toDouble() }.toFloat()
+    val productCount: Int get() = dishes.sumOf { it.items.size }
+}
+
 data class RepeatPreview(
     val sourceDate: LocalDate,
     val mealCount: Int,
@@ -44,6 +61,17 @@ data class DashboardUiState(
     val pendingRepeat: RepeatPreview? = null
 ) {
     val isToday: Boolean get() = date == today
+
+    /**
+     * Meals that actually have food, in natural eating order. Empty meals are not rendered at
+     * all: a placeholder card for every meal type used to eat half the screen.
+     */
+    val sections: List<DiarySection>
+        get() = MealType.entries.mapNotNull { type ->
+            val dishes = meals.filter { it.mealType == type && it.items.isNotEmpty() }
+                .sortedBy { it.createdAt }
+            if (dishes.isEmpty()) null else DiarySection(type, dishes)
+        }
     val consumedCalories: Float get() = meals.sumOf { it.totalCalories.toDouble() }.toFloat()
     val consumedProtein: Float get() = meals.sumOf { it.totalProtein.toDouble() }.toFloat()
     val consumedFat: Float get() = meals.sumOf { it.totalFat.toDouble() }.toFloat()

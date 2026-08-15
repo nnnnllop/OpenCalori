@@ -6,6 +6,7 @@ import com.opencalori.app.data.backup.BackupSnapshot
 import com.opencalori.app.data.backup.ImportSummary
 import com.opencalori.app.domain.model.ApiConfig
 import com.opencalori.app.domain.model.ApiValidationResult
+import com.opencalori.app.domain.model.NutritionSourceMode
 import com.opencalori.app.domain.model.UserProfile
 import com.opencalori.app.domain.model.ValidationStatus
 import com.opencalori.app.testing.FakeAiRepository
@@ -138,6 +139,59 @@ class SettingsViewModelTest {
         assertTrue(profile.aiSkipGramsReview)
         assertTrue(profile.aiSkipFinalReview)
         assertFalse(profile.aiEnabled)
+    }
+
+    @Test
+    fun `enabling ai puts the app into AI-only mode`() = runTest {
+        prefs.state.value = prefs.state.value.copy(
+            aiEnabled = false,
+            nutritionSourceMode = NutritionSourceMode.LOCAL_DATABASE
+        )
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        vm.setAiEnabled(true)
+        advanceUntilIdle()
+
+        assertTrue(prefs.state.value.aiEnabled)
+        assertEquals(NutritionSourceMode.AI_ONLY, prefs.state.value.nutritionSourceMode)
+    }
+
+    @Test
+    fun `disabling ai falls back to the offline catalogue`() = runTest {
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        vm.setAiEnabled(false)
+        advanceUntilIdle()
+
+        assertFalse(prefs.state.value.aiEnabled)
+        assertEquals(NutritionSourceMode.LOCAL_DATABASE, prefs.state.value.nutritionSourceMode)
+    }
+
+    @Test
+    fun `choosing hybrid turns ai back on`() = runTest {
+        prefs.state.value = prefs.state.value.copy(aiEnabled = false)
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        vm.setNutritionSourceMode(NutritionSourceMode.HYBRID)
+        advanceUntilIdle()
+
+        assertEquals(NutritionSourceMode.HYBRID, prefs.state.value.nutritionSourceMode)
+        assertTrue(prefs.state.value.aiEnabled)
+    }
+
+    @Test
+    fun `choosing the local catalogue turns ai off`() = runTest {
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        vm.setNutritionSourceMode(NutritionSourceMode.LOCAL_DATABASE)
+        advanceUntilIdle()
+
+        assertEquals(NutritionSourceMode.LOCAL_DATABASE, prefs.state.value.nutritionSourceMode)
+        assertFalse(prefs.state.value.aiEnabled)
     }
 
     @Test

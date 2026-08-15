@@ -128,11 +128,17 @@ data class MealDto(
     val dateEpochDay: Long,
     val mealType: String,
     val createdAt: Long = 0L,
+    /**
+     * Dish title inside the meal. Absent in backups written before multi-dish support, which
+     * is exactly why it defaults to null instead of an empty string.
+     */
+    val dishName: String? = null,
     val items: List<FoodItemDto> = emptyList()
 ) {
     fun toDomain() = Meal(
         dateEpochDay = dateEpochDay,
         mealType = enumOrDefault(mealType, MealType.SNACK),
+        dishName = dishName?.trim()?.takeIf { it.isNotEmpty() },
         createdAt = createdAt,
         items = items.map { it.toDomain() }
     )
@@ -142,6 +148,7 @@ data class MealDto(
             dateEpochDay = meal.dateEpochDay,
             mealType = meal.mealType.name,
             createdAt = meal.createdAt,
+            dishName = meal.dishName,
             items = meal.items.map { FoodItemDto.from(it) }
         )
     }

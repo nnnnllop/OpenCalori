@@ -74,9 +74,25 @@ interface DishRepository {
 interface AiRepository {
     suspend fun validateApi(): ApiValidationResult
 
-    suspend fun recognizeDish(imageBase64: String): Result<RecognizedDish>
+    /**
+     * Stage 1 of the photo pipeline: every visually separate dish on the plate, each with its
+     * own ingredient list. An empty list means "no food recognised", never an error.
+     */
+    suspend fun recognizeDishes(imageBase64: String): Result<List<RecognizedDish>>
 
-    suspend fun recognizeText(description: String): Result<RecognizedDish>
+    /** Stage 1 of the text pipeline. Grams are never estimated here. */
+    suspend fun recognizeTextDishes(description: String): Result<List<RecognizedDish>>
+
+    /** Legacy single-dish helpers, kept for callers that only need the first dish. */
+    suspend fun recognizeDish(imageBase64: String): Result<RecognizedDish> =
+        recognizeDishes(imageBase64).map { dishes ->
+            dishes.firstOrNull() ?: RecognizedDish("", emptyList())
+        }
+
+    suspend fun recognizeText(description: String): Result<RecognizedDish> =
+        recognizeTextDishes(description).map { dishes ->
+            dishes.firstOrNull() ?: RecognizedDish("", emptyList())
+        }
 
     suspend fun estimateNutrition(
         imageBase64: String,

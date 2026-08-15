@@ -26,6 +26,9 @@ class FakeMealRepository : MealRepository {
     /** Every (day, type, items) triple that reached the repository, in order. */
     val addCalls = mutableListOf<Triple<Long, MealType, List<FoodItem>>>()
 
+    /** Dish titles passed alongside [addCalls], same order. Null means "no dish title". */
+    val addedDishNames = mutableListOf<String?>()
+
     override fun getMealsForDay(epochDay: Long): Flow<List<Meal>> =
         meals.map { all -> all.filter { it.dateEpochDay == epochDay } }
 
@@ -36,6 +39,7 @@ class FakeMealRepository : MealRepository {
         dishName: String?
     ): Long {
         addCalls += Triple(epochDay, mealType, items)
+        addedDishNames += dishName?.trim()?.takeIf { it.isNotEmpty() }
         if (items.isEmpty()) return -1
 
         val stamped = items.map { it.copy(id = nextItemId++) }
@@ -100,11 +104,17 @@ class FakeMealRepository : MealRepository {
         weights.value = weights.value.filterNot { it.dateEpochDay == dateEpochDay }
     }
 
-    fun seedMeal(epochDay: Long, mealType: MealType, vararg items: FoodItem): Meal {
+    fun seedMeal(
+        epochDay: Long,
+        mealType: MealType,
+        vararg items: FoodItem,
+        dishName: String? = null
+    ): Meal {
         val meal = Meal(
             id = nextMealId++,
             dateEpochDay = epochDay,
             mealType = mealType,
+            dishName = dishName,
             items = items.map { it.copy(id = nextItemId++) }
         )
         meals.value = meals.value + meal

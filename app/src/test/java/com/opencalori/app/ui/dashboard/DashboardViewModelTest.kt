@@ -298,6 +298,118 @@ class DashboardViewModelTest {
         assertEquals(75f, prefs.state.value.weightKg, 0.01f)
     }
 
+    // ---- Diary hierarchy: date -> meal -> dish -> products ----
+
+    @Test
+    fun `dishes of one meal type are grouped under a single meal section`() = runTest {
+        meals.seedMeal(
+            today.toEpochDay(),
+            MealType.BREAKFAST,
+            food("Паста", 180f, 160f),
+            dishName = "Паста карбонара"
+        )
+        meals.seedMeal(
+            today.toEpochDay(),
+            MealType.BREAKFAST,
+            food("Огурец", 100f, 15f),
+            food("Помидор", 120f, 20f),
+            dishName = "Овощной салат"
+        )
+        meals.seedMeal(today.toEpochDay(), MealType.DINNER, food("Рыба", 200f, 100f))
+
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        val sections = vm.uiState.value.sections
+        assertEquals(listOf(MealType.BREAKFAST, MealType.DINNER), sections.map { it.mealType })
+        val breakfast = sections.first()
+        assertEquals(2, breakfast.dishes.size)
+        assertEquals(
+            listOf("Паста карбонара", "Овощной салат"),
+            breakfast.dishes.map { it.displayName }
+        )
+        assertEquals(3, breakfast.productCount)
+        // 180g*1.6 + 100g*0.15 + 120g*0.2 = 288 + 15 + 24
+        assertEquals(327f, breakfast.calories, 0.1f)
+    }
+
+    @Test
+    fun `an empty meal type is not rendered as a section`() = runTest {
+        meals.seedMeal(today.toEpochDay(), MealType.LUNCH, food("Суп", 300f, 50f))
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        assertEquals(1, vm.uiState.value.sections.size)
+        assertEquals(MealType.LUNCH, vm.uiState.value.sections.single().mealType)
+    }
+
+    @Test
+    fun `deleting one dish keeps the other dish of the same meal`() = runTest {
+        val pasta = meals.seedMeal(
+            today.toEpochDay(),
+            MealType.BREAKFAST,
+            food("Паста", 180f, 160f),
+            dishName = "Паста карбонара"
+        )
+        meals.seedMeal(
+            today.toEpochDay(),
+            MealType.BREAKFAST,
+            food("Огурец", 100f, 15f),
+            dishName = "Овощной салат"
+        )
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        vm.deleteMeal(pasta)
+        advanceUntilIdle()
+
+        assertEquals(1, vm.uiState.value.sections.single().dishes.size)
+        assertEquals("Овощной салат", vm.uiState.value.sections.single().dishes.single().displayName)
+    }
+
+    @Test
+    fun `undo puts the deleted dish back under its own title`() = runTest {
+        val salad = meals.seedMeal(
+            today.toEpochDay(),
+            MealType.BREAKFAST,
+            food("Огурец", 100f, 15f),
+            dishName = "Овощной салат"
+        )
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        vm.deleteMeal(salad)
+        advanceUntilIdle()
+        vm.undoDelete()
+        advanceUntilIdle()
+
+        assertEquals("Овощной салат", meals.addedDishNames.last())
+        assertEquals("Овощной салат", vm.uiState.value.meals.single().displayName)
+    }
+
+    @Test
+    fun `undo of a product deletion restores only that product`() = runTest {
+        val dish = meals.seedMeal(
+            today.toEpochDay(),
+            MealType.LUNCH,
+            food("Рис", 150f, 120f),
+            food("Курица", 100f, 170f),
+            dishName = "Рис с курицей"
+        )
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        vm.deleteFoodItem(dish, dish.items.last())
+        advanceUntilIdle()
+        assertEquals(1, vm.uiState.value.meals.single().items.size)
+
+        vm.undoDelete()
+        advanceUntilIdle()
+
+        assertEquals(listOf("Рис", "Курица"), vm.uiState.value.meals.single().items.map { it.name })
+        assertEquals("Рис с курицей", meals.addedDishNames.last())
+    }
+
     @Test
     fun `state emits an update when a meal is added`() = runTest {
         val vm = viewModel()

@@ -86,60 +86,66 @@ class AiRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun recognizeDish(imageBase64: String): Result<RecognizedDish> = runCatching {
+    override suspend fun recognizeDishes(imageBase64: String): Result<List<RecognizedDish>> = runCatching {
         val config = apiConfigStore.current()
         require(config.isConfigured) { NOT_CONFIGURED }
 
-val prompt = """
+        val prompt = """
             Ты — очень внимательный эксперт по блюдам и составу порций. Выполни только первый этап:
-            точно назови видимое блюдо и перечисли его видимые съедобные компоненты.
+            найди КАЖДОЕ визуально отдельное блюдо на фото и перечисли его видимые съедобные компоненты.
 
-            Сначала мысленно осмотри всю тарелку, затем основное блюдо, гарнир, овощи, соус и отдельные
-            продукты. Название блюда используй только когда внешний вид уверенно это подтверждает. Если
-            на фото не одно узнаваемое блюдо, а набор отдельных продуктов, укажи dish = "Продукты".
+            Сначала мысленно осмотри всю сцену: тарелки, чашки, пиалы, отдельные порции. Каждое
+            отдельное блюдо — это отдельный элемент массива dishes. Гарнир, соус и напиток не
+            склеивай с основным блюдом в одно название.
 
             Ответь СТРОГО одним валидным JSON-объектом без Markdown, пояснений и лишних ключей:
-            {"dish":"Название блюда","ingredients":["Продукт 1","Продукт 2"]}
+            {"dishes":[{"name":"Паста карбонара","confidence":0.86,"ingredients":[{"name":"паста","confidence":0.91,"visibleQuantity":null},{"name":"бекон","confidence":0.78,"visibleQuantity":null}]},{"name":"Овощной салат","confidence":0.81,"ingredients":[{"name":"огурец","confidence":0.93,"visibleQuantity":null}]}]}
 
             Обязательные правила точности:
-            - Все названия — на русском языке, короткие и каноничные. Например: "паста карбонара",
+            - Все названия — на русском языке, короткие и каноничные: "паста карбонара",
               "куриное филе", "рис варёный", "огурец".
+            - Одно визуально отдельное блюдо = один элемент dishes. Не объединяй два блюда в одно
+              и не разбивай одно блюдо на несколько.
             - Перечисляй только то, что действительно видно. Не достраивай скрытый рецепт, не добавляй
-              специи, масло, соус или ингредиенты, которые нельзя уверенно различить на фото.
-            - Основное блюдо, гарнир и каждый отдельный компонент перечисляй раздельно. Не дублируй
-              компоненты и не объединяй разные продукты в абстрактное "салат", если видны его части.
-            - Если компонент неясен, используй честное общее название (например, "белый соус"), а не
-              выдумывай конкретный продукт.
-            - Название dish — это понятное человеку название всей порции; ingredients — состав для расчёта.
-            - Если еды нет, верни {"dish":"","ingredients":[]}.
+              специи, масло или соус, которые нельзя уверенно различить.
+            - confidence — честная уверенность от 0 до 1. Ставь низкое значение, если сомневаешься.
+            - visibleQuantity всегда null, кроме случая, когда вес реально виден (упаковка, этикетка).
+              Не придумывай граммовки: вес подтвердит пользователь.
+            - Если продукт не удалось определить, используй название "unknown" вместо выдумки.
+            - Не дублируй один и тот же ингредиент внутри блюда.
+            - Если еды на фото нет, верни {"dishes":[]}.
         """.trimIndent()
 
         when (val response = client.chatCompletion(
             config,
             // Use the provider default image detail: subtle ingredients and sauces are critical here.
             listOf(ChatMessage.vision("user", prompt, imageBase64)),
-            maxTokens = 750
+            maxTokens = 1400
         )) {
-            is OpenAiClient.Result.Success -> {
-                val dish = AiResponseParser.parseDish(response.text)
-                dish.copy(dishName = dish.dishName.ifBlank { "Блюдо" })
-            }
-
+            is OpenAiClient.Result.Success -> AiResponseParser.parseDishes(response.text)
             is OpenAiClient.Result.HttpError -> error(response.userMessage)
             is OpenAiClient.Result.NetworkError -> error(response.userMessage)
         }
     }
 
-    override suspend fun recognizeText(description: String): Result<RecognizedDish> = runCatching {
+    override suspend fun recognizeTextDishes(description: String): Result<List<RecognizedDish>> = runCatching {
         val config = apiConfigStore.current()
         require(config.isConfigured) { NOT_CONFIGURED }
         val prompt = """
             Ты помощник дневника питания. Пользователь описал, что съел: "$description".
-            Верни только JSON без Markdown: {"dish":"название блюда или приёма пищи","ingredients":["продукт 1","продукт 2"]}.
-            Раздели несколько блюд в понятный общий состав, не придумывай граммовки и не добавляй продукты, которых пользователь не упомянул.
+
+            Верни только JSON без Markdown и пояснений:
+            {"dishes":[{"name":"Паста карбонара","confidence":0.8,"ingredients":[{"name":"паста","confidence":0.9,"visibleQuantity":null}]}]}
+
+            Правила:
+            - Каждое упомянутое блюдо — отдельный элемент dishes. Не склеивай разные блюда.
+            - Не добавляй продукты, которых пользователь не упомянул и которые не входят в блюдо очевидно.
+            - Никогда не придумывай граммовки: visibleQuantity всегда null, вес укажет пользователь.
+            - Названия — короткие, на русском. Если блюдо неясно, используй "unknown".
+            - Если описание не про еду, верни {"dishes":[]}.
         """.trimIndent()
-        when (val response = client.chatCompletion(config, listOf(ChatMessage.text("user", prompt)), maxTokens = 500)) {
-            is OpenAiClient.Result.Success -> AiResponseParser.parseDish(response.text)
+        when (val response = client.chatCompletion(config, listOf(ChatMessage.text("user", prompt)), maxTokens = 900)) {
+            is OpenAiClient.Result.Success -> AiResponseParser.parseDishes(response.text)
             is OpenAiClient.Result.HttpError -> error(response.userMessage)
             is OpenAiClient.Result.NetworkError -> error(response.userMessage)
         }
@@ -153,9 +159,13 @@ val prompt = """
         require(config.isConfigured) { NOT_CONFIGURED }
         val list = correctedIngredients.joinToString("\n") { "- $it" }
         val prompt = """
-            Ты считаешь КБЖУ для дневника питания. Блюдо: "$dishName". Продукты: \n$list
-            Верни только JSON-массив без Markdown. Для каждого продукта верни name, rawGrams: 0, cookedGrams: 0, calories, protein, fat, carbs, notes.
-            Нельзя придумывать вес: rawGrams и cookedGrams всегда 0, потому что граммовку введёт пользователь. КБЖУ укажи на 100 г съедобного продукта.
+            Ты считаешь КБЖУ для дневника питания. Блюдо: "$dishName". Продукты:
+            $list
+
+            Верни только JSON-массив без Markdown. Для каждого продукта верни name, rawGrams, cookedGrams,
+            calories, protein, fat, carbs, notes и сохрани порядок и названия из списка выше.
+            Нельзя придумывать вес: rawGrams и cookedGrams всегда 0, потому что граммовку введёт пользователь.
+            КБЖУ укажи на 100 г съедобного продукта.
         """.trimIndent()
         when (val response = client.chatCompletion(config, listOf(ChatMessage.text("user", prompt)), maxTokens = (600 + correctedIngredients.size * 160).coerceIn(600, 3000))) {
             is OpenAiClient.Result.Success -> AiResponseParser.parseNutrition(response.text)
@@ -186,7 +196,7 @@ val prompt = """
             [{"name":"Название","rawGrams":80,"cookedGrams":200,"calories":130,"protein":2.5,"fat":0.5,"carbs":28,"notes":"варёный"}]
 
             Правила точности:
-            - Верни ровно \${correctedIngredients.size} элементов в том же порядке, что и во входном списке.
+            - Верни ровно ${correctedIngredients.size} элементов в том же порядке, что и во входном списке.
               Поле name должно в точности повторять соответствующее подтверждённое название.
             - Все числа — числа без единиц, неотрицательные и реалистичные для порции на фотографии.
             - cookedGrams — масса продукта в том виде, в котором он виден. rawGrams указывай только
