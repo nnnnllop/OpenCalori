@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -91,7 +92,6 @@ fun DashboardScreen(
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var weightDialogVisible by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<FoodItem?>(null) }
     var addFoodSheetVisible by remember { mutableStateOf(false) }
 
@@ -130,7 +130,7 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 104.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
@@ -152,16 +152,6 @@ fun DashboardScreen(
                     fat = state.consumedFat to (state.goal?.fatGrams?.toFloat() ?: 70f),
                     carbs = state.consumedCarbs to (state.goal?.carbsGrams?.toFloat() ?: 250f)
                 )
-            }
-            item {
-                WeightCard(
-                    currentWeight = state.currentWeight,
-                    onAddClick = { weightDialogVisible = true }
-                )
-            }
-
-            if (state.weightHistory.size >= 3) {
-                item { WeightChartCard(history = state.weightHistory) }
             }
 
             item {
@@ -201,7 +191,10 @@ fun DashboardScreen(
     }
 
     if (addFoodSheetVisible) {
-        ModalBottomSheet(onDismissRequest = { addFoodSheetVisible = false }) {
+        ModalBottomSheet(
+            onDismissRequest = { addFoodSheetVisible = false },
+            modifier = Modifier.navigationBarsPadding()
+        ) {
             AddFoodBottomSheet(
                 scannerReady = state.aiEnabled && state.scannerReady,
                 onScan = {
@@ -219,17 +212,6 @@ fun DashboardScreen(
             )
         }
     }
-    if (weightDialogVisible) {
-        WeightInputDialog(
-            initial = state.currentWeight,
-            onDismiss = { weightDialogVisible = false },
-            onSave = { value ->
-                viewModel.addWeight(value)
-                weightDialogVisible = false
-            }
-        )
-    }
-
     editingItem?.let { item ->
         GramsEditDialog(
             item = item,

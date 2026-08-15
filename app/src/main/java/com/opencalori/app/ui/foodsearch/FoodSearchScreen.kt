@@ -156,7 +156,7 @@ fun FoodSearchScreen(
 
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 96.dp)
+                contentPadding = PaddingValues(bottom = 24.dp)
             ) {
                 items(visible, key = { it.key }) { product ->
                     ProductRow(product) { selectedProduct = product }
@@ -250,7 +250,8 @@ private fun ProductRow(product: Product, onClick: () -> Unit) {
                         product.name,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1
+                        maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
                 Surface(
