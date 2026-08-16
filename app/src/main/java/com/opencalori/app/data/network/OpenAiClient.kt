@@ -41,7 +41,9 @@ class OpenAiClient @Inject constructor() {
             engine {
                 config {
                     connectTimeout(30, TimeUnit.SECONDS)
-                    readTimeout(120, TimeUnit.SECONDS)
+                    // Reasoning models (Nemotron, DeepSeek-R1) emit nothing for minutes
+                    // before the first token; the socket would idle out at 120s.
+                    readTimeout(300, TimeUnit.SECONDS)
                     writeTimeout(120, TimeUnit.SECONDS)
                     // A user action must map to a single provider request. Repair/retry is explicit above this layer.
                     retryOnConnectionFailure(false)

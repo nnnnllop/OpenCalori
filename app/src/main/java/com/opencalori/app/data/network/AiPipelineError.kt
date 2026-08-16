@@ -20,7 +20,7 @@ sealed class AiPipelineError(val userMessage: String) {
     data object DuplicateItem : AiPipelineError("ИИ продублировал продукт. Проверьте состав и повторите текущий шаг.")
     data class ProviderError(val message: String) : AiPipelineError(message)
     data class NetworkError(val message: String) : AiPipelineError(message)
-    data object TimeoutError : AiPipelineError("ИИ не ответил вовремя. Проверьте интернет и повторите текущий шаг.")
+    data object TimeoutError : AiPipelineError("ИИ думал слишком долго и не успел ответить. Повторите шаг — со второй попытки обычно быстрее.")
     data object VisionUnsupported : AiPipelineError("Выбранная модель не поддерживает анализ изображений. Выберите мультимодальную модель.")
 }
 
