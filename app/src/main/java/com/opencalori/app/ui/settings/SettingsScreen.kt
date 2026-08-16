@@ -69,6 +69,7 @@ import com.opencalori.app.BuildConfig
 import com.opencalori.app.data.backup.ImportMode
 import com.opencalori.app.domain.model.ApiValidationResult
 import com.opencalori.app.domain.model.NutritionSourceMode
+import com.opencalori.app.domain.model.PhotoQuality
 import com.opencalori.app.domain.model.ValidationStatus
 import com.opencalori.app.ui.theme.AppShapes
 import com.opencalori.app.ui.util.NumberFormat
@@ -190,6 +191,12 @@ fun SettingsScreen(
                 mode = profile?.nutritionSourceMode ?: NutritionSourceMode.AI_ONLY,
                 onModeSelected = viewModel::setNutritionSourceMode
             )
+            if (profile?.aiEnabled == true) {
+                PhotoQualityCard(
+                    quality = profile?.photoQuality ?: PhotoQuality.HIGH,
+                    onQualitySelected = viewModel::setPhotoQuality
+                )
+            }
             if (profile?.aiEnabled == true) {
                 SectionTitle("\u041a\u043e\u043d\u0442\u0440\u043e\u043b\u044c AI", small = true)
                 Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
@@ -513,6 +520,26 @@ private fun NutritionSourceModeCard(
             NutritionModeButton("\u0418\u0418", mode == NutritionSourceMode.AI_ONLY) { onModeSelected(NutritionSourceMode.AI_ONLY) }
             NutritionModeButton("\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u0430\u044f б\u0430\u0437\u0430", mode == NutritionSourceMode.LOCAL_DATABASE) { onModeSelected(NutritionSourceMode.LOCAL_DATABASE) }
             NutritionModeButton("\u041a\u043e\u043c\u0431\u0438\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0439", mode == NutritionSourceMode.HYBRID) { onModeSelected(NutritionSourceMode.HYBRID) }
+        }
+    }
+}
+
+@Composable
+private fun PhotoQualityCard(
+    quality: PhotoQuality,
+    onQualitySelected: (PhotoQuality) -> Unit
+) {
+    Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Качество фото для ИИ", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Сильнее сжатие — меньше трафика и токенов. Блюда уверенно распознаются даже на экономном качестве.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            NutritionModeButton("Высокое", quality == PhotoQuality.HIGH) { onQualitySelected(PhotoQuality.HIGH) }
+            NutritionModeButton("Сбалансированное", quality == PhotoQuality.BALANCED) { onQualitySelected(PhotoQuality.BALANCED) }
+            NutritionModeButton("Экономное", quality == PhotoQuality.ECONOMY) { onQualitySelected(PhotoQuality.ECONOMY) }
         }
     }
 }

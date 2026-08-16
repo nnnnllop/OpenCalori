@@ -153,6 +153,16 @@ class ApiErrorMessagesTest {
     }
 
     @Test
+    fun `groq json validation failure disables json mode`() {
+        assertEquals(
+            setOf("response_format"),
+            ApiErrorMessages.unsupportedParameterHints(
+                "{\"error\":{\"message\":\"Failed to validate JSON. Please adjust your prompt. See 'failed_generation' for more details.\",\"failed_generation\":\"...\"}}"
+            )
+        )
+    }
+
+    @Test
     fun `unrelated 400 bodies produce no hints`() {
         assertTrue(ApiErrorMessages.unsupportedParameterHints("invalid request body").isEmpty())
         assertTrue(ApiErrorMessages.unsupportedParameterHints("").isEmpty())

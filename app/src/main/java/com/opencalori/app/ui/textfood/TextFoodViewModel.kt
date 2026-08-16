@@ -51,15 +51,16 @@ data class TextFoodState(
     val busy: Boolean = false,
     val saved: Boolean = false,
     val error: String? = null,
-    /** One manual retry remains after repository-level JSON repair. */
-    val manualRetryAvailable: Boolean = false,
-    val manualRetryUsed: Boolean = false
+    /** Retry of the failed AI step stays available until the query changes. */
+    val manualRetryAvailable: Boolean = false
 ) {
     val canRecognize: Boolean get() = query.trim().length >= 2 && !busy
 
     val canCalculate: Boolean get() = !busy && dishes.isNotEmpty() && dishes.all { it.names.isNotEmpty() }
 
     val canSave: Boolean get() = !busy && dishes.isNotEmpty() && dishes.all { it.hasValidGrams }
+
+    val canRetry: Boolean get() = !busy && manualRetryAvailable
 
     val totalCalories: Float get() = dishes.sumOf { it.totalCalories.toDouble() }.toFloat()
 }
@@ -84,7 +85,7 @@ class TextFoodViewModel @Inject constructor(
     val state: StateFlow<TextFoodState> = _state.asStateFlow()
 
     fun setQuery(value: String) = _state.update {
-        it.copy(query = value.take(MAX_QUERY_LENGTH), error = null, manualRetryAvailable = false, manualRetryUsed = false)
+        it.copy(query = value.take(MAX_QUERY_LENGTH), error = null, manualRetryAvailable = false)
     }
 
     fun setMealType(value: MealType) = _state.update { it.copy(mealType = value) }
@@ -96,8 +97,7 @@ class TextFoodViewModel @Inject constructor(
             it.copy(
                 busy = true,
                 error = null,
-                manualRetryAvailable = false,
-                manualRetryUsed = if (manualRetry) it.manualRetryUsed else false
+                manualRetryAvailable = false
             )
         }
         viewModelScope.launch {
@@ -123,7 +123,7 @@ class TextFoodViewModel @Inject constructor(
                             it.copy(
                                 busy = false,
                                 error = "Не удалось найти еду в описании. Опишите блюда подробнее.",
-                                manualRetryAvailable = !it.manualRetryUsed
+                                manualRetryAvailable = true
                             )
                         }
                         return@onSuccess
@@ -134,8 +134,7 @@ class TextFoodViewModel @Inject constructor(
                             dishes = dishes,
                             stage = TextFoodStage.DISHES,
                             error = null,
-                            manualRetryAvailable = false,
-                            manualRetryUsed = false
+                            manualRetryAvailable = false
                         )
                     }
                 }
@@ -144,7 +143,7 @@ class TextFoodViewModel @Inject constructor(
                         it.copy(
                             busy = false,
                             error = error.aiUserMessage("Не удалось обработать описание. Повторите текущий шаг."),
-                            manualRetryAvailable = !it.manualRetryUsed
+                            manualRetryAvailable = true
                         )
                     }
                 }
@@ -153,7 +152,7 @@ class TextFoodViewModel @Inject constructor(
 
     fun retry() {
         val state = _state.value
-        if (!state.manualRetryAvailable || state.busy) return
+        if (!state.canRetry || state.busy) return
         when (state.stage) {
             TextFoodStage.INPUT -> recognize(manualRetry = true)
             TextFoodStage.DISHES -> calculate(manualRetry = true)
@@ -210,8 +209,7 @@ class TextFoodViewModel @Inject constructor(
             it.copy(
                 busy = true,
                 error = null,
-                manualRetryAvailable = false,
-                manualRetryUsed = if (manualRetry) it.manualRetryUsed else false
+                manualRetryAvailable = false
             )
         }
         viewModelScope.launch {
@@ -229,7 +227,7 @@ class TextFoodViewModel @Inject constructor(
                         it.copy(
                             busy = false,
                             error = error.aiUserMessage("Не удалось рассчитать КБЖУ. Повторите текущий шаг."),
-                            manualRetryAvailable = !it.manualRetryUsed
+                            manualRetryAvailable = true
                         )
                     }
                     return@launch
@@ -239,7 +237,7 @@ class TextFoodViewModel @Inject constructor(
                         it.copy(
                             busy = false,
                             error = "ИИ не вернул продукты для «${dish.name}». Проверьте состав и повторите текущий шаг.",
-                            manualRetryAvailable = !it.manualRetryUsed
+                            manualRetryAvailable = true
                         )
                     }
                     return@launch
@@ -253,8 +251,7 @@ class TextFoodViewModel @Inject constructor(
                     dishes = resolved,
                     stage = TextFoodStage.GRAMS,
                     error = null,
-                    manualRetryAvailable = false,
-                    manualRetryUsed = false
+                    manualRetryAvailable = false
                 )
             }
         }
@@ -302,8 +299,7 @@ class TextFoodViewModel @Inject constructor(
                     if (index == dishIndex) transform(dish) else dish
                 },
                 error = null,
-                manualRetryAvailable = false,
-                manualRetryUsed = false
+                manualRetryAvailable = false
             )
         }
     }

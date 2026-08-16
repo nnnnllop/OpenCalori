@@ -18,6 +18,7 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -54,7 +55,12 @@ class OpenAiClient @Inject constructor() {
 
     sealed class Result {
         data class Success(val text: String) : Result()
-        data class HttpError(val code: Int, val body: String) : Result()
+        data class HttpError(
+            val code: Int,
+            val body: String,
+            /** Provider-advised wait in seconds, from Retry-After or the error body. */
+            val retryAfterSeconds: Long? = null
+        ) : Result()
         data class NetworkError(val cause: Throwable) : Result()
         data class EmptyResponse(val truncated: Boolean = false) : Result()
 
@@ -78,6 +84,32 @@ class OpenAiClient @Inject constructor() {
         messages: List<ChatMessage>,
         maxTokens: Int = 1024,
         preferJsonMode: Boolean = false
+    ): Result {
+        // Rate limits (429) and transient provider hiccups (408/503/504) are waited out
+        // seamlessly: the provider names the exact pause ("Please try again in 27.4s",
+        // Retry-After) and the request repeats on its own; the user only sees a slightly
+        // longer "analysing" state instead of an error.
+        var attempt = 0
+        var result = callOnce(config, messages, maxTokens, preferJsonMode)
+        while (attempt < MAX_TRANSIENT_ATTEMPTS && result.isTransientRetryable()) {
+            val advised = (result as Result.HttpError).retryAfterSeconds
+            val backoff = TRANSIENT_BACKOFF_SECONDS.elementAtOrNull(attempt) ?: TRANSIENT_BACKOFF_SECONDS.last()
+            delay((advised ?: backoff).coerceIn(1, MAX_TRANSIENT_WAIT_SECONDS) * 1000)
+            attempt++
+            result = callOnce(config, messages, maxTokens, preferJsonMode)
+        }
+        return result
+    }
+
+    private fun Result.isTransientRetryable(): Boolean =
+        this is Result.HttpError && (code == 429 || code == 408 || code == 503 || code == 504)
+
+    /** One full attempt including the compatibility and truncation self-healing. */
+    private suspend fun callOnce(
+        config: ApiConfig,
+        messages: List<ChatMessage>,
+        maxTokens: Int,
+        preferJsonMode: Boolean
     ): Result {
         val first = singleCall(config, messages, maxTokens, preferJsonMode, allowCompatFallback = true)
         // Reasoning models can burn the whole budget on thinking and return no payload at all;
@@ -133,7 +165,11 @@ class OpenAiClient @Inject constructor() {
         }
         val rawBody = response.bodyAsText()
         if (!response.status.isSuccess()) {
-            Result.HttpError(response.status.value, rawBody)
+            Result.HttpError(
+                code = response.status.value,
+                body = rawBody,
+                retryAfterSeconds = retryAfterSeconds(response.headers[HttpHeaders.RetryAfter], rawBody)
+            )
         } else {
             val decoded = runCatching { json.decodeFromString<ChatCompletionResponse>(rawBody) }.getOrNull()
             val text = decoded?.firstText?.takeIf { it.isNotBlank() }
@@ -175,7 +211,17 @@ class OpenAiClient @Inject constructor() {
         const val TEMPERATURE = "temperature"
     }
 
+    /** Provider-advised wait: the Retry-After header (seconds) or Groq's "try again in 27.4s". */
+    private fun retryAfterSeconds(header: String?, body: String): Long? {
+        header?.trim()?.toLongOrNull()?.let { return it }
+        return RETRY_AFTER_IN_BODY.find(body)?.value?.toDoubleOrNull()?.toLong()
+    }
+
     private companion object {
         const val MAX_TOKENS_CAP = 8192
+        const val MAX_TRANSIENT_ATTEMPTS = 3
+        const val MAX_TRANSIENT_WAIT_SECONDS = 60L
+        val TRANSIENT_BACKOFF_SECONDS = longArrayOf(8, 16, 30)
+        val RETRY_AFTER_IN_BODY = Regex("try again in ([0-9]+(?:\\.[0-9]+)?)\\s*s", RegexOption.IGNORE_CASE)
     }
 }

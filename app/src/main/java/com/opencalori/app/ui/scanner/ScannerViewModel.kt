@@ -12,6 +12,7 @@ import com.opencalori.app.domain.model.Dish
 import com.opencalori.app.domain.model.EstimatedIngredient
 import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.domain.model.NutritionSourceMode
+import com.opencalori.app.domain.model.PhotoQuality
 import com.opencalori.app.domain.model.RecognizedDish
 import com.opencalori.app.domain.model.RecognizedIngredient
 import com.opencalori.app.domain.model.UserProfile
@@ -108,9 +109,8 @@ data class ScannerUiState(
     val nutritionSourceMode: NutritionSourceMode = NutritionSourceMode.AI_ONLY,
     /** The AI step that may be repeated without restarting the photo flow. */
     val failedAiStage: ScannerStage? = null,
-    /** Exactly one user-initiated retry is available after the automatic JSON repair. */
+    /** Retry of the failed AI step stays available until the user leaves the flow. */
     val manualRetryAvailable: Boolean = false,
-    val manualRetryUsed: Boolean = false,
     val saving: Boolean = false
 ) {
     val isAnalyzing: Boolean
@@ -194,10 +194,12 @@ class ScannerViewModel @Inject constructor(
     val uiState: StateFlow<ScannerUiState> = _uiState.asStateFlow()
 
     private var analysisJob: Job? = null
+    private var photoQuality: PhotoQuality = PhotoQuality.HIGH
 
     init {
         viewModelScope.launch {
             userPrefs.profile.collect { profile ->
+                photoQuality = profile.photoQuality
                 _uiState.update { it.copy(nutritionSourceMode = profile.nutritionSourceMode) }
             }
         }
@@ -215,11 +217,11 @@ class ScannerViewModel @Inject constructor(
     // ---- Capture ----
 
     fun onPhotoTaken(imageBytes: ByteArray) {
-        analyze { imageProcessor.prepare(imageBytes) }
+        analyze { imageProcessor.prepare(imageBytes, photoQuality) }
     }
 
     fun onImagePicked(uri: Uri) {
-        analyze { imageProcessor.prepare(uri) }
+        analyze { imageProcessor.prepare(uri, photoQuality) }
     }
 
     fun onCaptureFailed(message: String?) {
@@ -240,8 +242,7 @@ class ScannerViewModel @Inject constructor(
                 stage = ScannerStage.ANALYZING_1,
                 error = null,
                 failedAiStage = null,
-                manualRetryAvailable = false,
-                manualRetryUsed = false
+                manualRetryAvailable = false
             )
         }
         analysisJob = viewModelScope.launch {
@@ -407,8 +408,7 @@ class ScannerViewModel @Inject constructor(
                 stage = ScannerStage.ANALYZING_2,
                 error = null,
                 failedAiStage = null,
-                manualRetryAvailable = false,
-                manualRetryUsed = if (manualRetry) it.manualRetryUsed else false
+                manualRetryAvailable = false
             )
         }
 
@@ -638,15 +638,14 @@ class ScannerViewModel @Inject constructor(
         val state = _uiState.value
         val photo = state.photoBase64
         val failedStage = state.failedAiStage
-        if (photo == null || failedStage == null || !state.manualRetryAvailable) return
+        if (photo == null || failedStage == null) return
         analysisJob?.cancel()
         _uiState.update {
             it.copy(
                 stage = failedStage,
                 error = null,
                 failedAiStage = null,
-                manualRetryAvailable = false,
-                manualRetryUsed = true
+                manualRetryAvailable = true
             )
         }
         analysisJob = viewModelScope.launch {
@@ -684,7 +683,7 @@ class ScannerViewModel @Inject constructor(
                 stage = ScannerStage.ERROR,
                 error = throwable.aiUserMessage(fallback),
                 failedAiStage = failedStage,
-                manualRetryAvailable = failedStage != null && !it.manualRetryUsed
+                manualRetryAvailable = failedStage != null
             )
         }
     }

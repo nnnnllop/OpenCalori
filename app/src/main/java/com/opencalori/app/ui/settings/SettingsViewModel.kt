@@ -11,6 +11,7 @@ import com.opencalori.app.data.preferences.ApiKeyStore
 import com.opencalori.app.domain.model.ApiConfig
 import com.opencalori.app.domain.model.ApiValidationResult
 import com.opencalori.app.domain.model.NutritionSourceMode
+import com.opencalori.app.domain.model.PhotoQuality
 import com.opencalori.app.domain.model.UserProfile
 import com.opencalori.app.domain.model.ValidationStatus
 import com.opencalori.app.domain.repository.AiRepository
@@ -151,6 +152,9 @@ class SettingsViewModel @Inject constructor(
     fun setNutritionSourceMode(mode: NutritionSourceMode) = viewModelScope.launch {
         userPrefs.setNutritionSourceMode(mode)
         userPrefs.setAiEnabled(mode.usesAi)
+    }
+    fun setPhotoQuality(quality: PhotoQuality) = viewModelScope.launch {
+        userPrefs.setPhotoQuality(quality)
     }
 
     // ---- Backup ----

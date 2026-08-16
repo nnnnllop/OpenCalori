@@ -8,6 +8,7 @@ import android.net.Uri
 import android.util.Base64
 import androidx.exifinterface.media.ExifInterface
 import com.opencalori.app.di.IoDispatcher
+import com.opencalori.app.domain.model.PhotoQuality
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -24,10 +25,10 @@ import javax.inject.Singleton
  */
 interface ImageProcessor {
     /** Downscales, fixes EXIF rotation and returns (jpegBytes, base64). */
-    suspend fun prepare(bytes: ByteArray): PreparedImage
+    suspend fun prepare(bytes: ByteArray, quality: PhotoQuality = PhotoQuality.HIGH): PreparedImage
 
     /** Same, for an image the user picked from the gallery. */
-    suspend fun prepare(uri: Uri): PreparedImage
+    suspend fun prepare(uri: Uri, quality: PhotoQuality = PhotoQuality.HIGH): PreparedImage
 }
 
 data class PreparedImage(
@@ -46,14 +47,14 @@ class AndroidImageProcessor @Inject constructor(
     @IoDispatcher private val io: CoroutineDispatcher
 ) : ImageProcessor {
 
-    override suspend fun prepare(bytes: ByteArray): PreparedImage = withContext(io) {
-        encode(decode(bytes), rotationOf(bytes))
+    override suspend fun prepare(bytes: ByteArray, quality: PhotoQuality): PreparedImage = withContext(io) {
+        encode(decode(bytes), rotationOf(bytes), quality)
     }
 
-    override suspend fun prepare(uri: Uri): PreparedImage = withContext(io) {
+    override suspend fun prepare(uri: Uri, quality: PhotoQuality): PreparedImage = withContext(io) {
         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
             ?: error("Не удалось прочитать изображение")
-        encode(decode(bytes), rotationOf(bytes))
+        encode(decode(bytes), rotationOf(bytes), quality)
     }
 
     private fun decode(bytes: ByteArray): Bitmap =
@@ -74,8 +75,8 @@ class AndroidImageProcessor @Inject constructor(
         }
     }.getOrDefault(0)
 
-    private fun encode(source: Bitmap, rotationDegrees: Int): PreparedImage {
-        val scale = maxOf(source.width, source.height).toFloat() / MAX_DIMENSION
+    private fun encode(source: Bitmap, rotationDegrees: Int, quality: PhotoQuality): PreparedImage {
+        val scale = maxOf(source.width, source.height).toFloat() / quality.maxDimension
         val scaled = if (scale > 1f) {
             Bitmap.createScaledBitmap(
                 source,
@@ -95,14 +96,9 @@ class AndroidImageProcessor @Inject constructor(
         }
 
         val output = ByteArrayOutputStream()
-        oriented.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)
+        oriented.compress(Bitmap.CompressFormat.JPEG, quality.jpegQuality, output)
         val jpeg = output.toByteArray()
 
         return PreparedImage(jpeg = jpeg, base64 = Base64.encodeToString(jpeg, Base64.NO_WRAP))
-    }
-
-    private companion object {
-        const val MAX_DIMENSION = 896
-        const val JPEG_QUALITY = 82
     }
 }

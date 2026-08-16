@@ -5,6 +5,7 @@ import com.opencalori.app.domain.model.ApiValidationResult
 import com.opencalori.app.domain.model.Dish
 import com.opencalori.app.domain.model.EstimatedIngredient
 import com.opencalori.app.domain.model.NutritionSourceMode
+import com.opencalori.app.domain.model.PhotoQuality
 import com.opencalori.app.domain.model.Product
 import com.opencalori.app.domain.model.ProductSource
 import com.opencalori.app.domain.model.RecognizedDish
@@ -37,6 +38,9 @@ class FakeUserPreferences(initial: UserProfile = UserProfile(onboardingCompleted
     }
     override suspend fun setNutritionSourceMode(mode: NutritionSourceMode) {
         state.value = state.value.copy(nutritionSourceMode = mode)
+    }
+    override suspend fun setPhotoQuality(quality: PhotoQuality) {
+        state.value = state.value.copy(photoQuality = quality)
     }
 
     override suspend fun setAiSkipListReview(skip: Boolean) {

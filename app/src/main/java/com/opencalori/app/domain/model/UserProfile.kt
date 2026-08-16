@@ -32,7 +32,8 @@ data class UserProfile(
     val aiSkipListReview: Boolean = false,      // skip "edit recognized list" step
     val aiSkipGramsReview: Boolean = false,     // skip "edit grams" step
     val aiSkipFinalReview: Boolean = false,     // skip "final confirmation" step
-    val nutritionSourceMode: NutritionSourceMode = NutritionSourceMode.AI_ONLY
+    val nutritionSourceMode: NutritionSourceMode = NutritionSourceMode.AI_ONLY,
+    val photoQuality: PhotoQuality = PhotoQuality.HIGH
 )
 
 data class CalorieGoal(

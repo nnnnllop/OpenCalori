@@ -77,7 +77,9 @@ object ApiErrorMessages {
     /**
      * Extracts optional request parameters the provider explicitly rejected in a 400 answer.
      * Typical examples: "Unsupported parameter: 'max_tokens'", "response_format is not supported",
-     * "temperature does not support 0.2 with this model".
+     * "temperature does not support 0.2 with this model". Groq also rejects json_object itself
+     * when the model failed to produce valid JSON ("Failed to validate JSON...
+     * See 'failed_generation'"), which is handled the same way: retry once without JSON mode.
      */
     fun unsupportedParameterHints(body: String): Set<String> {
         val text = (providerMessage(body) ?: body).lowercase()
@@ -85,6 +87,9 @@ object ApiErrorMessages {
         val hints = mutableSetOf<String>()
         if (text.contains("max_tokens") || text.contains("max completion tokens")) hints += "max_tokens"
         if (text.contains("response_format") || text.contains("json mode") || text.contains("json_object")) {
+            hints += "response_format"
+        }
+        if (text.contains("failed to validate json") || text.contains("failed_generation")) {
             hints += "response_format"
         }
         if (text.contains("temperature")) hints += "temperature"
