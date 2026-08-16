@@ -20,9 +20,7 @@ object AiResponseParser {
     private const val MAX_NAME_LENGTH = 120
     private const val MAX_NOTE_LENGTH = 160
     private const val MAX_GRAMS = 5_000.0
-    private val NUTRITION_KEYS = setOf(
-        "name", "rawGrams", "cookedGrams", "calories", "protein", "fat", "carbs", "notes"
-    )
+    private val NUMBER_IN_STRING = Regex("-?\\d+(?:[.,]\\d+)?")
 
     /** Kept only for source compatibility with older parser callers. */
     class MalformedResponse : AiPipelineException(AiPipelineError.MalformedJson)
@@ -31,35 +29,30 @@ object AiResponseParser {
 
     fun parseDishes(raw: String): List<RecognizedDish> {
         val root = extractPayload(raw) as? JsonObject ?: fail(AiPipelineError.WrongSchema)
-        requireExactlyKeys(root, setOf("dishes"))
         val dishes = requiredArray(root, "dishes")
         if (dishes.size > MAX_DISHES) fail(AiPipelineError.InvalidRange)
 
         val seenDishes = mutableSetOf<String>()
         return dishes.mapIndexed { dishIndex, value ->
             val dish = value as? JsonObject ?: fail(AiPipelineError.WrongSchema)
-            requireExactlyKeys(dish, setOf("name", "confidence", "ingredients"))
             val name = requiredText(dish, "name")
             val normalizedName = name.normalized()
             if (!seenDishes.add(normalizedName)) fail(AiPipelineError.DuplicateItem)
-            val confidence = requiredNumber(dish, "confidence", 0.0, 1.0).toFloat()
+            val confidence = requiredConfidence(dish, "confidence")
             val ingredients = requiredArray(dish, "ingredients")
             if (ingredients.size > MAX_INGREDIENTS) fail(AiPipelineError.InvalidRange)
 
             val seenIngredients = mutableSetOf<String>()
             val parsedIngredients = ingredients.mapIndexed { ingredientIndex, item ->
                 val ingredient = item as? JsonObject ?: fail(AiPipelineError.WrongSchema)
-                requireExactlyKeys(ingredient, setOf("name", "confidence", "visibleQuantity"))
                 val ingredientName = requiredText(ingredient, "name")
                 if (!seenIngredients.add(ingredientName.normalized())) fail(AiPipelineError.DuplicateItem)
-                val ingredientConfidence = requiredNumber(ingredient, "confidence", 0.0, 1.0).toFloat()
-                if (ingredient["visibleQuantity"] !is kotlinx.serialization.json.JsonNull) {
-                    fail(AiPipelineError.InvalidRange)
-                }
+                val ingredientConfidence = requiredConfidence(ingredient, "confidence")
                 RecognizedIngredient(
                     name = ingredientName,
                     id = stableId("ingredient", dishIndex * MAX_INGREDIENTS + ingredientIndex, ingredientName),
                     confidence = ingredientConfidence,
+                    // The app never trusts AI weights; whatever the model put here is ignored.
                     visibleQuantityGrams = null
                 )
             }
@@ -89,7 +82,6 @@ object AiResponseParser {
         val seenNames = mutableSetOf<String>()
         return array.mapIndexed { index, item ->
             val value = item as? JsonObject ?: fail(AiPipelineError.WrongSchema)
-            requireExactlyKeys(value, NUTRITION_KEYS)
             val name = requiredText(value, "name")
             if (!seenNames.add(name.normalized())) fail(AiPipelineError.DuplicateItem)
             if (expected != null && name != expected[index]) fail(AiPipelineError.RenamedConfirmedItem)
@@ -107,7 +99,7 @@ object AiResponseParser {
                 proteinPer100g = requiredNumber(value, "protein", 0.0, 100.0).toFloat(),
                 fatPer100g = requiredNumber(value, "fat", 0.0, 100.0).toFloat(),
                 carbsPer100g = requiredNumber(value, "carbs", 0.0, 100.0).toFloat(),
-                notes = requiredNotes(value),
+                notes = optionalNotes(value),
                 id = stableId("nutrition", index, name)
             )
         }
@@ -193,27 +185,33 @@ object AiResponseParser {
         return text
     }
 
-    private fun requiredNotes(source: JsonObject): String {
-        val primitive = source["notes"] as? JsonPrimitive
-            ?: fail(if (source.containsKey("notes")) AiPipelineError.WrongSchema else AiPipelineError.MissingRequiredField)
-        if (!primitive.isString) fail(AiPipelineError.WrongSchema)
-        val notes = primitive.contentOrNull ?: fail(AiPipelineError.WrongSchema)
-        if (notes.length > MAX_NOTE_LENGTH) fail(AiPipelineError.InvalidRange)
-        return notes.trim()
+    /** Confidence is accepted as a 0..1 fraction or as a percent (86 -> 0.86). */
+    private fun requiredConfidence(source: JsonObject, key: String): Float {
+        val value = requiredNumber(source, key, 0.0, 100.0)
+        return (if (value > 1.0) value / 100.0 else value).toFloat()
     }
 
+    /** Cosmetic field: a missing or null notes never blocks an otherwise valid answer. */
+    private fun optionalNotes(source: JsonObject): String {
+        val primitive = source["notes"] as? JsonPrimitive ?: return ""
+        if (!primitive.isString) return ""
+        return primitive.contentOrNull.orEmpty().take(MAX_NOTE_LENGTH).trim()
+    }
+
+    /**
+     * Numbers are accepted as JSON numbers or as strings ("120", "120 г", "86%"):
+     * many models quote numbers despite the contract. Anything without a digit fails.
+     */
     private fun requiredNumber(source: JsonObject, key: String, min: Double, max: Double): Double {
         val primitive = source[key] as? JsonPrimitive
             ?: fail(if (source.containsKey(key)) AiPipelineError.WrongSchema else AiPipelineError.MissingRequiredField)
-        if (primitive.isString) fail(AiPipelineError.InvalidNumber)
-        val number = primitive.doubleOrNull ?: fail(AiPipelineError.InvalidNumber)
+        val number = when {
+            !primitive.isString -> primitive.doubleOrNull
+            else -> NUMBER_IN_STRING.find(primitive.contentOrNull.orEmpty())?.value?.replace(',', '.')?.toDouble()
+        } ?: fail(AiPipelineError.InvalidNumber)
         if (!number.isFinite()) fail(AiPipelineError.InvalidNumber)
         if (number !in min..max) fail(AiPipelineError.InvalidRange)
         return number
-    }
-
-    private fun requireExactlyKeys(source: JsonObject, expected: Set<String>) {
-        if (source.keys != expected) fail(AiPipelineError.WrongSchema)
     }
 
     private fun String.normalized(): String = trim().lowercase()

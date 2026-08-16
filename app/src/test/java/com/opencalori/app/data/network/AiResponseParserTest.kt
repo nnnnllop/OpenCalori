@@ -44,19 +44,49 @@ class AiResponseParserTest {
     }
 
     @Test
-    fun `unknown fields and legacy aliases are rejected as wrong schema`() {
-        assertError(AiPipelineError.WrongSchema) {
-            AiResponseParser.parseDishes(
-                """{"dishes":[{"name":"Суп","confidence":0.8,"ingredients":[],"extra":true}]}"""
-            )
-        }
+    fun `extra unknown fields from chatty models are ignored`() {
+        val dishes = AiResponseParser.parseDishes(
+            """{"dishes":[{"name":"Суп","confidence":0.8,"ingredients":[],"extra":true}],"meta":"ok"}"""
+        )
+        assertEquals(listOf("Суп"), dishes.map { it.dishName })
     }
 
     @Test
-    fun `string number is not silently coerced`() {
+    fun `numeric strings and percent confidence are coerced`() {
+        val items = AiResponseParser.parseNutrition(
+            """[{"name":"рис","rawGrams":"150","cookedGrams":"0 г","calories":"130 ккал","protein":2,"fat":1,"carbs":28,"notes":"варёный","portion":"1 шт"}]""",
+            confirmedNames = listOf("рис"),
+            weightPolicy = AiResponseParser.NutritionWeightPolicy.PHOTO_ESTIMATE
+        )
+        assertEquals(150f, items.single().rawGrams)
+        assertEquals(130f, items.single().caloriesPer100g)
+    }
+
+    @Test
+    fun `percent confidence is normalised to fraction`() {
+        val dishes = AiResponseParser.parseDishes(
+            """{"dishes":[{"name":"Каша","confidence":86,"ingredients":[{"name":"овсянка","confidence":"70%","visibleQuantity":"примерно 40 г"}]}]}"""
+        )
+        assertEquals(0.86f, dishes.single().confidence)
+        assertEquals(0.7f, dishes.single().ingredients.single().confidence)
+        assertEquals(null, dishes.single().ingredients.single().visibleQuantityGrams)
+    }
+
+    @Test
+    fun `missing notes does not block an otherwise valid nutrition answer`() {
+        val items = AiResponseParser.parseNutrition(
+            """[{"name":"рис","rawGrams":0,"cookedGrams":0,"calories":130,"protein":2,"fat":1,"carbs":28}]""",
+            confirmedNames = listOf("рис"),
+            weightPolicy = AiResponseParser.NutritionWeightPolicy.USER_INPUT_ONLY
+        )
+        assertEquals("", items.single().notes)
+    }
+
+    @Test
+    fun `string number is rejected when it contains no digits`() {
         assertError(AiPipelineError.InvalidNumber) {
             AiResponseParser.parseNutrition(
-                """[{"name":"рис","rawGrams":"120 г","cookedGrams":0,"calories":130,"protein":2,"fat":1,"carbs":28,"notes":"варёный"}]""",
+                """[{"name":"рис","rawGrams":"много","cookedGrams":0,"calories":130,"protein":2,"fat":1,"carbs":28,"notes":"варёный"}]""",
                 confirmedNames = listOf("рис"),
                 weightPolicy = AiResponseParser.NutritionWeightPolicy.USER_INPUT_ONLY
             )
@@ -108,12 +138,11 @@ class AiResponseParserTest {
     }
 
     @Test
-    fun `recognition rejects visible grams because user confirms all weights`() {
-        assertError(AiPipelineError.InvalidRange) {
-            AiResponseParser.parseDishes(
-                """{"dishes":[{"name":"Каша","confidence":0.7,"ingredients":[{"name":"овсянка","confidence":0.8,"visibleQuantity":120}]}]}"""
-            )
-        }
+    fun `visible grams from the model are ignored because the user confirms all weights`() {
+        val dishes = AiResponseParser.parseDishes(
+            """{"dishes":[{"name":"Каша","confidence":0.7,"ingredients":[{"name":"овсянка","confidence":0.8,"visibleQuantity":120}]}]}"""
+        )
+        assertEquals(null, dishes.single().ingredients.single().visibleQuantityGrams)
     }
 
     @Test
