@@ -97,6 +97,10 @@ data class ChatCompletionResponse(
             }
         }
 
+    /** True when the model hit the token limit before producing any payload text. */
+    val truncated: Boolean
+        get() = choices.firstOrNull()?.finishReason == "length"
+
     private fun flatten(element: JsonElement): String? = when (element) {
         is JsonPrimitive -> element.contentOrNull
         is JsonArray -> element
@@ -117,7 +121,8 @@ data class ChatCompletionResponse(
 
 @Serializable
 data class Choice(
-    val message: ResponseMessage? = null
+    val message: ResponseMessage? = null,
+    @SerialName("finish_reason") val finishReason: String? = null
 )
 
 @Serializable

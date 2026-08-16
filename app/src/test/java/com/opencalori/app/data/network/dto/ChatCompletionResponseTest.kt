@@ -35,6 +35,19 @@ class ChatCompletionResponseTest {
     }
 
     @Test
+    fun `finish_reason length is surfaced as truncated`() {
+        val response = lenientJson().decodeFromString<ChatCompletionResponse>(
+            """{"choices":[{"finish_reason":"length","message":{"role":"assistant","content":"","reasoning_content":""}}]}"""
+        )
+        assertNull(response.firstText)
+        assertEquals(true, response.truncated)
+        val complete = lenientJson().decodeFromString<ChatCompletionResponse>(
+            """{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}"""
+        )
+        assertEquals(false, complete.truncated)
+    }
+
+    @Test
     fun `missing content and reasoning yields null`() {
         val response = lenientJson().decodeFromString<ChatCompletionResponse>(
             """{"choices":[{"message":{"role":"assistant"}}]}"""

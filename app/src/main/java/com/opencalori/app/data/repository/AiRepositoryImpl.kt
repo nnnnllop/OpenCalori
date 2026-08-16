@@ -74,7 +74,7 @@ class AiRepositoryImpl @Inject constructor(
             task = "Распознай визуально отдельные блюда и их видимые ингредиенты на одном фото.",
             contract = DISHES_CONTRACT,
             messages = listOf(ChatMessage.vision("user", recognitionPrompt(requestId), imageBase64)),
-            maxTokens = 1800,
+            maxTokens = 4000,
             parse = AiResponseParser::parseDishes
         )
     }
@@ -105,7 +105,7 @@ class AiRepositoryImpl @Inject constructor(
             task = "Выдели блюда и ингредиенты только из описания еды.",
             contract = DISHES_CONTRACT,
             messages = listOf(ChatMessage.text("user", prompt)),
-            maxTokens = 1600,
+            maxTokens = 4000,
             parse = AiResponseParser::parseDishes
         )
     }
@@ -129,7 +129,7 @@ class AiRepositoryImpl @Inject constructor(
             task = "Верни КБЖУ на 100 г для уже подтверждённых продуктов без оценки веса.",
             contract = NUTRITION_CONTRACT,
             messages = listOf(ChatMessage.text("user", prompt)),
-            maxTokens = (650 + confirmed.size * 180).coerceIn(700, 4000),
+            maxTokens = (1600 + confirmed.size * 250).coerceIn(2000, 6000),
             parse = { raw ->
                 AiResponseParser.parseNutrition(raw, confirmed, AiResponseParser.NutritionWeightPolicy.USER_INPUT_ONLY)
             }
@@ -152,7 +152,7 @@ class AiRepositoryImpl @Inject constructor(
             messages = listOf(
                 ChatMessage.vision("user", nutritionPrompt(requestId, dishName, confirmed, photoMode = true), imageBase64)
             ),
-            maxTokens = (700 + confirmed.size * 220).coerceIn(800, 5000),
+            maxTokens = (1800 + confirmed.size * 250).coerceIn(2200, 6000),
             parse = { raw ->
                 AiResponseParser.parseNutrition(raw, confirmed, AiResponseParser.NutritionWeightPolicy.PHOTO_ESTIMATE)
             }
@@ -254,7 +254,9 @@ class AiRepositoryImpl @Inject constructor(
         }
 
     private fun OpenAiClient.Result.toPipelineException(): AiPipelineException = when (this) {
-        is OpenAiClient.Result.EmptyResponse -> AiPipelineException(AiPipelineError.EmptyResponse)
+        is OpenAiClient.Result.EmptyResponse -> AiPipelineException(
+            if (truncated) AiPipelineError.TruncatedResponse else AiPipelineError.EmptyResponse
+        )
         is OpenAiClient.Result.HttpError -> when {
             ApiErrorMessages.looksLikeMissingVision(code, body) -> AiPipelineException(AiPipelineError.VisionUnsupported)
             else -> AiPipelineException(AiPipelineError.ProviderError(userMessage))

@@ -56,7 +56,7 @@ class OpenAiClient @Inject constructor() {
         data class Success(val text: String) : Result()
         data class HttpError(val code: Int, val body: String) : Result()
         data class NetworkError(val cause: Throwable) : Result()
-        data object EmptyResponse : Result()
+        data class EmptyResponse(val truncated: Boolean = false) : Result()
 
         /** Message safe to show only after repository-level classification. */
         val userMessage: String
@@ -64,7 +64,7 @@ class OpenAiClient @Inject constructor() {
                 is Success -> ""
                 is HttpError -> ApiErrorMessages.forHttp(code, body)
                 is NetworkError -> ApiErrorMessages.forNetwork(cause)
-                EmptyResponse -> AiPipelineError.EmptyResponse.userMessage
+                is EmptyResponse -> AiPipelineError.EmptyResponse.userMessage
             }
     }
 
@@ -80,6 +80,12 @@ class OpenAiClient @Inject constructor() {
         preferJsonMode: Boolean = false
     ): Result {
         val first = singleCall(config, messages, maxTokens, preferJsonMode, allowCompatFallback = true)
+        // Reasoning models can burn the whole budget on thinking and return no payload at all;
+        // one immediate retry with a doubled budget usually recovers the answer.
+        if (first is Result.EmptyResponse && first.truncated) {
+            return singleCall(config, messages, (maxTokens * 2).coerceAtMost(MAX_TOKENS_CAP),
+                preferJsonMode, allowCompatFallback = false)
+        }
         if (first is Result.HttpError && first.code == 400) {
             val fallback = compatFallbackFor(config, first.body) ?: return first
             applyFallback(config, fallback)
@@ -129,11 +135,12 @@ class OpenAiClient @Inject constructor() {
         if (!response.status.isSuccess()) {
             Result.HttpError(response.status.value, rawBody)
         } else {
-            val text = runCatching { json.decodeFromString<ChatCompletionResponse>(rawBody) }
-                .getOrNull()
-                ?.firstText
-                ?.takeIf { it.isNotBlank() }
-            if (text == null) Result.EmptyResponse else Result.Success(text)
+            val decoded = runCatching { json.decodeFromString<ChatCompletionResponse>(rawBody) }.getOrNull()
+            val text = decoded?.firstText?.takeIf { it.isNotBlank() }
+            when {
+                text != null -> Result.Success(text)
+                else -> Result.EmptyResponse(truncated = decoded?.truncated == true)
+            }
         }
     } catch (e: CancellationException) {
         throw e
@@ -166,5 +173,9 @@ class OpenAiClient @Inject constructor() {
         const val MAX_TOKENS = "max_tokens"
         const val RESPONSE_FORMAT = "response_format"
         const val TEMPERATURE = "temperature"
+    }
+
+    private companion object {
+        const val MAX_TOKENS_CAP = 8192
     }
 }
