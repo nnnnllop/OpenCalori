@@ -68,32 +68,60 @@ class OpenAiClient @Inject constructor() {
 
     /**
      * Sends exactly one provider request. The only automatic content recovery is the repository's
-     * one-off repair request, so transport behaviour cannot silently repeat a food-entry step.
+     * one-off repair request, plus a single compatibility fallback when the provider rejects an
+     * optional request parameter (json mode, max_tokens, temperature) that other providers accept.
      */
     suspend fun chatCompletion(
         config: ApiConfig,
         messages: List<ChatMessage>,
         maxTokens: Int = 1024,
         preferJsonMode: Boolean = false
-    ): Result = singleCall(config, messages, maxTokens, preferJsonMode)
+    ): Result {
+        val first = singleCall(config, messages, maxTokens, preferJsonMode, allowCompatFallback = true)
+        if (first is Result.HttpError && first.code == 400) {
+            val fallback = compatFallbackFor(config, first.body) ?: return first
+            applyFallback(config, fallback)
+            return singleCall(config, messages, maxTokens, preferJsonMode, allowCompatFallback = false)
+        }
+        return first
+    }
+
+    /**
+     * Parameter dialects differ across OpenAI-compatible servers: o-series wants
+     * max_completion_tokens instead of max_tokens, some reject response_format or temperature.
+     * The provider's own 400 message is the most reliable signal of what to change.
+     */
+    private fun compatFallbackFor(config: ApiConfig, body: String): Set<String>? {
+        val hints = ApiErrorMessages.unsupportedParameterHints(body)
+        if (hints.isEmpty()) return null
+        var changed = false
+        if (CompatHints.MAX_TOKENS in hints && !maxTokensRejected.contains(config.baseUrl)) changed = true
+        if (CompatHints.RESPONSE_FORMAT in hints && !jsonModeRejected.contains(config.baseUrl)) changed = true
+        if (CompatHints.TEMPERATURE in hints && !temperatureRejected.contains(config.baseUrl)) changed = true
+        return if (changed) hints else null
+    }
+
+    private fun applyFallback(config: ApiConfig, hints: Set<String>) {
+        if (CompatHints.MAX_TOKENS in hints) maxTokensRejected.add(config.baseUrl)
+        if (CompatHints.RESPONSE_FORMAT in hints) jsonModeRejected.add(config.baseUrl)
+        if (CompatHints.TEMPERATURE in hints) temperatureRejected.add(config.baseUrl)
+    }
+
+    private val maxTokensRejected = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val jsonModeRejected = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val temperatureRejected = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     private suspend fun singleCall(
         config: ApiConfig,
         messages: List<ChatMessage>,
         maxTokens: Int,
-        preferJsonMode: Boolean
+        preferJsonMode: Boolean,
+        allowCompatFallback: Boolean
     ): Result = try {
         val response = client.post(config.chatCompletionsUrl) {
             header(HttpHeaders.Authorization, "Bearer " + config.apiKey)
             contentType(ContentType.Application.Json)
-            setBody(
-                ChatCompletionRequest(
-                    model = config.modelId,
-                    messages = messages,
-                    maxTokens = maxTokens,
-                    responseFormat = if (preferJsonMode && supportsJsonMode(config)) JsonResponseFormat() else null
-                )
-            )
+            setBody(buildRequest(config, messages, maxTokens, preferJsonMode))
         }
         val rawBody = response.bodyAsText()
         if (!response.status.isSuccess()) {
@@ -111,7 +139,30 @@ class OpenAiClient @Inject constructor() {
         Result.NetworkError(e)
     }
 
-    /** Do not send optional OpenAI-only fields to arbitrary compatibility servers. */
+    private fun buildRequest(
+        config: ApiConfig,
+        messages: List<ChatMessage>,
+        maxTokens: Int,
+        preferJsonMode: Boolean
+    ): ChatCompletionRequest = ChatCompletionRequest(
+        model = config.modelId,
+        messages = messages,
+        maxTokens = if (maxTokensRejected.contains(config.baseUrl)) null else maxTokens,
+        maxCompletionTokens = if (maxTokensRejected.contains(config.baseUrl)) maxTokens else null,
+        temperature = if (temperatureRejected.contains(config.baseUrl)) null else 0.2f,
+        responseFormat = if (preferJsonMode && supportsJsonMode(config)) JsonResponseFormat() else null
+    )
+
+    /**
+     * JSON mode is sent to any provider unless this exact provider already rejected it once;
+     * the 400-compat fallback above learns and remembers per base URL.
+     */
     private fun supportsJsonMode(config: ApiConfig): Boolean =
-        config.baseUrl.lowercase().contains("api.openai.com")
+        !jsonModeRejected.contains(config.baseUrl)
+
+    private object CompatHints {
+        const val MAX_TOKENS = "max_tokens"
+        const val RESPONSE_FORMAT = "response_format"
+        const val TEMPERATURE = "temperature"
+    }
 }

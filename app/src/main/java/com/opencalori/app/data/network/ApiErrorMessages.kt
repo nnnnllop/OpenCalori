@@ -73,4 +73,21 @@ object ApiErrorMessages {
             "не поддерживает изображ"
         ).any { text.contains(it) }
     }
+
+    /**
+     * Extracts optional request parameters the provider explicitly rejected in a 400 answer.
+     * Typical examples: "Unsupported parameter: 'max_tokens'", "response_format is not supported",
+     * "temperature does not support 0.2 with this model".
+     */
+    fun unsupportedParameterHints(body: String): Set<String> {
+        val text = (providerMessage(body) ?: body).lowercase()
+        if (text.isBlank()) return emptySet()
+        val hints = mutableSetOf<String>()
+        if (text.contains("max_tokens") || text.contains("max completion tokens")) hints += "max_tokens"
+        if (text.contains("response_format") || text.contains("json mode") || text.contains("json_object")) {
+            hints += "response_format"
+        }
+        if (text.contains("temperature")) hints += "temperature"
+        return hints
+    }
 }

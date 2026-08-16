@@ -125,4 +125,36 @@ class ApiErrorMessagesTest {
         assertFalse(ApiErrorMessages.looksLikeMissingVision(429, "image not supported"))
         assertFalse(ApiErrorMessages.looksLikeMissingVision(503, "image not supported"))
     }
+
+    @Test
+    fun `openai o-series max_tokens rejection is detected`() {
+        assertEquals(
+            setOf("max_tokens"),
+            ApiErrorMessages.unsupportedParameterHints(
+                "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead."
+            )
+        )
+    }
+
+    @Test
+    fun `response_format and temperature rejections are detected`() {
+        assertEquals(
+            setOf("response_format"),
+            ApiErrorMessages.unsupportedParameterHints(
+                "{\"error\":{\"message\":\"response_format is not supported for this model\"}}"
+            )
+        )
+        assertEquals(
+            setOf("temperature"),
+            ApiErrorMessages.unsupportedParameterHints(
+                "{\"error\":{\"message\":\"temperature does not support 0.2 with this model\"}}"
+            )
+        )
+    }
+
+    @Test
+    fun `unrelated 400 bodies produce no hints`() {
+        assertTrue(ApiErrorMessages.unsupportedParameterHints("invalid request body").isEmpty())
+        assertTrue(ApiErrorMessages.unsupportedParameterHints("").isEmpty())
+    }
 }

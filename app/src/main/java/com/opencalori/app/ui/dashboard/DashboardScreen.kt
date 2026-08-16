@@ -275,11 +275,16 @@ private fun DateNavigator(
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onPrev) { Icon(Icons.Default.ChevronLeft, "Предыдущий день") }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Text(
                 if (isToday) "Сегодня" else date.format(formatter),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             if (!isToday) {
                 TextButton(onClick = onToday) { Text("Вернуться к сегодня") }

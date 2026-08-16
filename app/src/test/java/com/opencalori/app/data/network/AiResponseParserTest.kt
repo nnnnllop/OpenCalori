@@ -134,6 +134,22 @@ class AiResponseParserTest {
         assertEquals(first.id, second.id)
     }
 
+    @Test
+    fun `json wrapped in think block of a reasoning model is parsed`() {
+        val dishes = AiResponseParser.parseDishes(
+            "<think>Смотрю на фото: там паста и салат. Отвечу строго JSON без лишнего текста.</think>\n" + validDishesJson()
+        )
+        assertEquals(listOf("Паста карбонара", "Овощной салат"), dishes.map { it.dishName })
+    }
+
+    @Test
+    fun `json after reasoning prose without think tags is parsed`() {
+        val dishes = AiResponseParser.parseDishes(
+            "Разбираю изображение... вижу два блюда... итоговый ответ:\n" + validDishesJson() + "\nГотово."
+        )
+        assertEquals(2, dishes.size)
+    }
+
     private fun assertError(expected: AiPipelineError, block: () -> Unit) {
         val error = assertThrows(AiPipelineException::class.java, block)
         assertEquals(expected, error.pipelineError)

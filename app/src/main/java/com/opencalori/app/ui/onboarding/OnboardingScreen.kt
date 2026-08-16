@@ -56,6 +56,7 @@ fun OnboardingScreen(
         modifier = Modifier
             .fillMaxSize()
             .systemBarsPadding()
+            .imePadding()
             .padding(24.dp)
     ) {
         Row(

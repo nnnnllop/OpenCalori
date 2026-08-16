@@ -17,8 +17,11 @@ import kotlinx.serialization.json.put
 data class ChatCompletionRequest(
     val model: String,
     val messages: List<ChatMessage>,
-    @SerialName("max_tokens") val maxTokens: Int = 1024,
-    val temperature: Float = 0.2f,
+    // OpenAI o-series and some other newer models only accept max_completion_tokens.
+    @SerialName("max_tokens") val maxTokens: Int? = 1024,
+    @SerialName("max_completion_tokens") val maxCompletionTokens: Int? = null,
+    // Null is omitted from the payload (explicitNulls = false), which some reasoning models require.
+    val temperature: Float? = 0.2f,
     @SerialName("response_format") val responseFormat: JsonResponseFormat? = null
 )
 
@@ -80,10 +83,18 @@ data class ChatCompletionResponse(
     val choices: List<Choice> = emptyList(),
     val error: ApiError? = null
 ) {
-    /** Text of the first choice, tolerating both the string and the multipart array form. */
+    /**
+     * Text of the first choice, tolerating both the string and the multipart array form.
+     * Reasoning models (Nemotron, DeepSeek-R1, Qwen-thinking) sometimes put the payload only
+     * into reasoning_content or wrap it in <think> tags, so a blank content must not win.
+     */
     val firstText: String?
         get() = choices.firstOrNull()?.message?.let { message ->
-            message.content?.let(::flatten) ?: message.reasoningContent
+            val contentText = message.content?.let(::flatten)
+            when {
+                !contentText.isNullOrBlank() -> contentText
+                else -> message.reasoningContent?.takeIf { it.isNotBlank() }
+            }
         }
 
     private fun flatten(element: JsonElement): String? = when (element) {
