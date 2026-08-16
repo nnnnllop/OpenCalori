@@ -94,6 +94,7 @@ data class ChatCompletionResponse(
             when {
                 !contentText.isNullOrBlank() -> contentText
                 else -> message.reasoningContent?.takeIf { it.isNotBlank() }
+                    ?: message.reasoning?.takeIf { it.isNotBlank() }
             }
         }
 
@@ -128,7 +129,9 @@ data class Choice(
 @Serializable
 data class ResponseMessage(
     val content: JsonElement? = null,
-    @SerialName("reasoning_content") val reasoningContent: String? = null
+    @SerialName("reasoning_content") val reasoningContent: String? = null,
+    // Groq's dialect of the reasoning field, alongside the DeepSeek-style reasoning_content.
+    val reasoning: String? = null
 )
 
 @Serializable

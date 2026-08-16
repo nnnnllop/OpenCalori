@@ -49,7 +49,7 @@ class AiRepositoryImpl @Inject constructor(
 
         val visionPing = client.chatCompletion(
             config,
-            listOf(ChatMessage.vision("user", "What color is this image? Reply with one word.", ONE_PIXEL_PNG_BASE64, "image/png", "low")),
+            listOf(ChatMessage.vision("user", "What color is this image? Reply with one word.", VISION_PROBE_PNG_BASE64, "image/png", "low")),
             maxTokens = 16
         )
         return when (visionPing) {
@@ -276,8 +276,10 @@ class AiRepositoryImpl @Inject constructor(
         const val MAX_NAME_LENGTH = 120
         const val MAX_INGREDIENTS = 40
         const val MAX_REPAIR_RESPONSE_LENGTH = 12_000
-        const val ONE_PIXEL_PNG_BASE64 =
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        // 8x8 PNG: Groq rejects images smaller than 2 pixels per dimension ("Image must
+        // have at least 2 pixels in each dimension"), OpenAI and NVIDIA accept it fine too.
+        const val VISION_PROBE_PNG_BASE64 =
+            "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mPolpLCihiGlgQAxRYvwfK/u5YAAAAASUVORK5CYII="
 
         const val DISHES_CONTRACT = """
             JSON contract: {"dishes":[{"name":"string (1..120)","confidence":"number 0..1","ingredients":[{"name":"string (1..120)","confidence":"number 0..1","visibleQuantity":null}]}]}.
