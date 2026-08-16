@@ -105,10 +105,70 @@ class AiResponseParserTest {
     }
 
     @Test
-    fun `changed confirmed product name is rejected`() {
-        assertError(AiPipelineError.RenamedConfirmedItem) {
+    fun `json_object wrapper object is unwrapped to the nutrition array`() {
+        val items = AiResponseParser.parseNutrition(
+            """{"ingredients":[${nutritionJsonBody("рис")},${nutritionJsonBody("куриное филе")}]}""",
+            confirmedNames = listOf("рис", "куриное филе"),
+            weightPolicy = AiResponseParser.NutritionWeightPolicy.PHOTO_ESTIMATE
+        )
+        assertEquals(listOf("рис", "куриное филе"), items.map { it.name })
+    }
+
+    @Test
+    fun `improvised wrapper key is unwrapped too`() {
+        val items = AiResponseParser.parseNutrition(
+            """{"items":[${nutritionJsonBody("рис")}],"meta":"ok"}""",
+            confirmedNames = listOf("рис"),
+            weightPolicy = AiResponseParser.NutritionWeightPolicy.USER_INPUT_ONLY
+        )
+        assertEquals(listOf("рис"), items.map { it.name })
+    }
+
+    @Test
+    fun `case differences are not renames and confirmed spelling wins`() {
+        // модель вернула «Курица», подтверждено «курица»
+        val raw = """{"ingredients":[{"name":"Курица","rawGrams":0,"cookedGrams":0,"calories":165,"protein":31,"fat":3.6,"carbs":0,"notes":""}]}"""
+        val items = AiResponseParser.parseNutrition(
+            raw,
+            confirmedNames = listOf("курица"),
+            weightPolicy = AiResponseParser.NutritionWeightPolicy.USER_INPUT_ONLY
+        )
+        assertEquals("курица", items.single().name)
+    }
+
+    @Test
+    fun `shuffled answer is reordered to the confirmed list`() {
+        val raw = """{"ingredients":[${nutritionJsonBody("куриное филе")},${nutritionJsonBody("рис")}]}"""
+        val items = AiResponseParser.parseNutrition(
+            raw,
+            confirmedNames = listOf("рис", "куриное филе"),
+            weightPolicy = AiResponseParser.NutritionWeightPolicy.PHOTO_ESTIMATE
+        )
+        assertEquals(listOf("рис", "куриное филе"), items.map { it.name })
+    }
+
+    @Test
+    fun `unknown extra positions are dropped silently`() {
+        val raw = """{"ingredients":[${nutritionJsonBody("рис")},${nutritionJsonBody("масло оливковое")}]}"""
+        val items = AiResponseParser.parseNutrition(
+            raw,
+            confirmedNames = listOf("рис"),
+            weightPolicy = AiResponseParser.NutritionWeightPolicy.PHOTO_ESTIMATE
+        )
+        assertEquals(listOf("рис"), items.map { it.name })
+    }
+
+    @Test
+    fun `bare array dishes response is accepted`() {
+        val dishes = AiResponseParser.parseDishes(validDishesArrayJson())
+        assertEquals(listOf("Паста карбонара", "Овощной салат"), dishes.map { it.dishName })
+    }
+
+    @Test
+    fun `real rename is still rejected as wrong item count`() {
+        assertError(AiPipelineError.WrongItemCount) {
             AiResponseParser.parseNutrition(
-                nutritionJson("курица"),
+                """{"ingredients":[${nutritionJsonBody("курица")}]}""",
                 confirmedNames = listOf("куриное филе"),
                 weightPolicy = AiResponseParser.NutritionWeightPolicy.PHOTO_ESTIMATE
             )
@@ -202,4 +262,23 @@ class AiResponseParserTest {
         rawGrams: Double = 0.0,
         cookedGrams: Double = 0.0
     ): String = """[{"name":"$name","rawGrams":$rawGrams,"cookedGrams":$cookedGrams,"calories":130,"protein":2,"fat":1,"carbs":28,"notes":"$notes"}]"""
+
+    private fun nutritionJsonBody(
+        name: String,
+        notes: String = "варёный",
+        rawGrams: Double = 0.0,
+        cookedGrams: Double = 0.0
+    ): String = """{"name":"$name","rawGrams":$rawGrams,"cookedGrams":$cookedGrams,"calories":130,"protein":2,"fat":1,"carbs":28,"notes":"$notes"}"""
+
+    private fun validDishesArrayJson(): String = """
+        [
+          {"name":"Паста карбонара","confidence":0.86,"ingredients":[
+            {"name":"паста","confidence":0.91,"visibleQuantity":null},
+            {"name":"бекон","confidence":0.78,"visibleQuantity":null}
+          ]},
+          {"name":"Овощной салат","confidence":0.81,"ingredients":[
+            {"name":"огурец","confidence":0.93,"visibleQuantity":null}
+          ]}
+        ]
+    """.trimIndent()
 }

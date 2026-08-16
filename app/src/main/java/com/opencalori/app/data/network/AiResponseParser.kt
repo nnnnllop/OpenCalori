@@ -28,12 +28,18 @@ object AiResponseParser {
     enum class NutritionWeightPolicy { USER_INPUT_ONLY, PHOTO_ESTIMATE }
 
     fun parseDishes(raw: String): List<RecognizedDish> {
-        val root = extractPayload(raw) as? JsonObject ?: fail(AiPipelineError.WrongSchema)
-        val dishes = requiredArray(root, "dishes")
-        if (dishes.size > MAX_DISHES) fail(AiPipelineError.InvalidRange)
+        val payload = extractPayload(raw)
+        // json_object mode cannot produce a top-level array, but a bare array still arrives
+        // from providers without JSON mode, and wrappers arrive from chatty models.
+        val dishArray = when (payload) {
+            is JsonObject -> payload["dishes"] as? JsonArray ?: singleArrayValue(payload)
+            is JsonArray -> payload
+            else -> null
+        } ?: fail(AiPipelineError.WrongSchema)
+        if (dishArray.size > MAX_DISHES) fail(AiPipelineError.InvalidRange)
 
         val seenDishes = mutableSetOf<String>()
-        return dishes.mapIndexed { dishIndex, value ->
+        return dishArray.mapIndexed { dishIndex, value ->
             val dish = value as? JsonObject ?: fail(AiPipelineError.WrongSchema)
             val name = requiredText(dish, "name")
             val normalizedName = name.normalized()
@@ -69,41 +75,62 @@ object AiResponseParser {
         confirmedNames: List<String>?,
         weightPolicy: NutritionWeightPolicy
     ): List<EstimatedIngredient> {
-        val array = extractPayload(raw) as? JsonArray ?: fail(AiPipelineError.WrongSchema)
+        val payload = extractPayload(raw)
+        // The contract is {"ingredients":[...]}; a bare array arrives from providers without
+        // JSON mode, and single-array wrappers ({"items":[...]}) from models that improvise.
+        val array = when (payload) {
+            is JsonArray -> payload
+            is JsonObject -> payload["ingredients"] as? JsonArray ?: singleArrayValue(payload)
+            else -> null
+        } ?: fail(AiPipelineError.WrongSchema)
         if (array.isEmpty()) fail(AiPipelineError.EmptyResponse)
         if (array.size > MAX_INGREDIENTS) fail(AiPipelineError.InvalidRange)
 
         val expected = confirmedNames?.map(String::trim)
         if (expected != null) {
             if (expected.any { it.isEmpty() || it.length > MAX_NAME_LENGTH }) fail(AiPipelineError.WrongSchema)
-            if (array.size != expected.size) fail(AiPipelineError.WrongItemCount)
         }
 
-        val seenNames = mutableSetOf<String>()
-        return array.mapIndexed { index, item ->
+        // Items are validated positionally and kept in confirmed order. Names are matched
+        // case-insensitively so "Курица" vs "курица" is not a rename; unknown extras are
+        // dropped; a missing confirmed item fails; two answers for one item is a duplicate.
+        val slotByName = expected?.mapIndexed { index, name -> name.normalized() to index }?.toMap()
+        val bySlot = mutableMapOf<Int, JsonObject>()
+        val parsed = mutableListOf<EstimatedIngredient>()
+        array.forEach { item ->
             val value = item as? JsonObject ?: fail(AiPipelineError.WrongSchema)
             val name = requiredText(value, "name")
-            if (!seenNames.add(name.normalized())) fail(AiPipelineError.DuplicateItem)
-            if (expected != null && name != expected[index]) fail(AiPipelineError.RenamedConfirmedItem)
-
-            val rawGrams = requiredNumber(value, "rawGrams", 0.0, MAX_GRAMS).toFloat()
-            val cookedGrams = requiredNumber(value, "cookedGrams", 0.0, MAX_GRAMS).toFloat()
-            if (weightPolicy == NutritionWeightPolicy.USER_INPUT_ONLY && (rawGrams != 0f || cookedGrams != 0f)) {
-                fail(AiPipelineError.InvalidRange)
-            }
-            EstimatedIngredient(
-                name = name,
-                rawGrams = rawGrams,
-                cookedGrams = cookedGrams,
-                caloriesPer100g = requiredNumber(value, "calories", 0.0, 900.0).toFloat(),
-                proteinPer100g = requiredNumber(value, "protein", 0.0, 100.0).toFloat(),
-                fatPer100g = requiredNumber(value, "fat", 0.0, 100.0).toFloat(),
-                carbsPer100g = requiredNumber(value, "carbs", 0.0, 100.0).toFloat(),
-                notes = optionalNotes(value),
-                id = stableId("nutrition", index, name)
+            val slot = if (expected == null) parsed.size else slotByName!![name.normalized()]
+            if (slot == null) return@forEach // unknown extra position — dropped
+            if (bySlot.put(slot, value) != null) fail(AiPipelineError.DuplicateItem)
+            val confirmedName = if (expected == null) name else expected[slot]
+            parsed.add(
+                EstimatedIngredient(
+                    name = confirmedName,
+                    rawGrams = requiredNumber(value, "rawGrams", 0.0, MAX_GRAMS).toFloat(),
+                    cookedGrams = requiredNumber(value, "cookedGrams", 0.0, MAX_GRAMS).toFloat(),
+                    caloriesPer100g = requiredNumber(value, "calories", 0.0, 900.0).toFloat(),
+                    proteinPer100g = requiredNumber(value, "protein", 0.0, 100.0).toFloat(),
+                    fatPer100g = requiredNumber(value, "fat", 0.0, 100.0).toFloat(),
+                    carbsPer100g = requiredNumber(value, "carbs", 0.0, 100.0).toFloat(),
+                    notes = optionalNotes(value),
+                    id = stableId("nutrition", slot, confirmedName)
+                )
             )
         }
+        if (expected != null && bySlot.size != expected.size) fail(AiPipelineError.WrongItemCount)
+        val result = parsed.sortedBy { item -> expected?.indexOfFirst { it.normalized() == item.name.normalized() } ?: 0 }
+        result.forEach { item ->
+            if (weightPolicy == NutritionWeightPolicy.USER_INPUT_ONLY && (item.rawGrams != 0f || item.cookedGrams != 0f)) {
+                fail(AiPipelineError.InvalidRange)
+            }
+        }
+        return result
     }
+
+    /** First array-valued property of a wrapper object, whatever the model named it. */
+    private fun singleArrayValue(source: JsonObject): JsonArray? =
+        source.values.filterIsInstance<JsonArray>().firstOrNull()
 
     /** Finds the first balanced JSON object/array without being confused by braces in strings. */
     private fun extractPayload(raw: String): JsonElement {
