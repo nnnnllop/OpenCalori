@@ -6,6 +6,8 @@ import com.opencalori.app.domain.model.Gender
 import com.opencalori.app.domain.model.Goal
 import com.opencalori.app.domain.model.Meal
 import com.opencalori.app.domain.model.MealType
+import com.opencalori.app.domain.model.NutritionSourceMode
+import com.opencalori.app.domain.model.PhotoQuality
 import com.opencalori.app.domain.model.Product
 import com.opencalori.app.domain.model.ProductSource
 import com.opencalori.app.domain.model.UserProfile
@@ -58,6 +60,27 @@ class BackupSerializerTest {
         assertEquals(2, restored.meals.first().items.size)
         assertEquals(2, restored.weights.size)
         assertEquals(1, restored.customProducts.size)
+    }
+
+    @Test
+    fun `ai settings survive the round trip and old backups keep defaults`() {
+        val withSettings = snapshot().copy(
+            profile = snapshot().profile.copy(
+                nutritionSourceMode = NutritionSourceMode.HYBRID,
+                photoQuality = PhotoQuality.ECONOMY
+            )
+        )
+        val restored = BackupSerializer.decode(BackupSerializer.encode(withSettings)).profile
+        assertEquals(NutritionSourceMode.HYBRID, restored.nutritionSourceMode)
+        assertEquals(PhotoQuality.ECONOMY, restored.photoQuality)
+
+        // A 0.4.8 backup has neither field: import must not crash and must fall back.
+        val legacyJson = BackupSerializer.encode(snapshot())
+            .replace(""",\"nutritionSourceMode\":\"AI_ONLY\"""", "")
+            .replace(""",\"photoQuality\":\"HIGH\"""", "")
+        val legacy = BackupSerializer.decode(legacyJson).profile
+        assertEquals(NutritionSourceMode.AI_ONLY, legacy.nutritionSourceMode)
+        assertEquals(PhotoQuality.HIGH, legacy.photoQuality)
     }
 
     @Test

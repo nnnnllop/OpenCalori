@@ -59,7 +59,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,6 +72,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.opencalori.app.domain.model.FoodItem
 import com.opencalori.app.domain.model.Meal
 import com.opencalori.app.domain.model.WeightEntry
@@ -94,11 +94,12 @@ fun DashboardScreen(
     onNavigateToSettings: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     var editingItem by remember { mutableStateOf<FoodItem?>(null) }
     var addFoodSheetVisible by remember { mutableStateOf(false) }
+    var weightDialogVisible by remember { mutableStateOf(false) }
 
     // Every destructive action is undoable, which is why none of them ask for confirmation.
     LaunchedEffect(state.message) {
@@ -159,6 +160,29 @@ fun DashboardScreen(
                 )
             }
 
+            item {
+                WeightCard(
+                    currentWeight = state.currentWeight,
+                    onAddClick = { weightDialogVisible = true }
+                )
+            }
+
+            // Two weigh-ins are the minimum a trend line can be drawn from.
+            if (state.weightHistory.size > 1) {
+                item { WeightChartCard(state.weightHistory) }
+            }
+
+            item {
+                OutlinedButton(
+                    onClick = viewModel::requestRepeatPreviousDay,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Повторить вчера")
+                }
+            }
+
             if (state.sections.isEmpty()) {
                 item { EmptyDiaryCard() }
             } else {
@@ -214,6 +238,23 @@ fun DashboardScreen(
             )
         }
     }
+    if (weightDialogVisible) {
+        WeightInputDialog(
+            initial = state.currentWeight,
+            onDismiss = { weightDialogVisible = false },
+            onSave = { weight ->
+                viewModel.addWeight(weight)
+                weightDialogVisible = false
+            }
+        )
+    }
+    state.pendingRepeat?.let { preview ->
+        RepeatPreviousDayDialog(
+            preview = preview,
+            onConfirm = viewModel::confirmRepeatPreviousDay,
+            onDismiss = viewModel::dismissRepeatPreviousDay
+        )
+    }
     editingItem?.let { item ->
         GramsEditDialog(
             item = item,
@@ -261,6 +302,29 @@ private fun AddFoodBottomSheet(
             Text("Описать еду для AI")
         }
     }
+}
+
+/** Copying a day overwrites what is already there, so it always asks first. */
+@Composable
+private fun RepeatPreviousDayDialog(
+    preview: RepeatPreview,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val formatter = remember { DateTimeFormatter.ofPattern("d MMMM", Locale("ru")) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Повторить вчера?") },
+        text = {
+            Text(
+                "Записи выбранного дня будут заменены копией за " +
+                    preview.sourceDate.format(formatter) + ": блюд " + preview.mealCount +
+                    ", продуктов " + preview.itemCount + ". Действие можно отменить."
+            )
+        },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Заменить день") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
+    )
 }
 
 @Composable

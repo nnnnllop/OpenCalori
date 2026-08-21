@@ -1,6 +1,7 @@
 package com.opencalori.app.data.network
 
 import com.opencalori.app.domain.model.EstimatedIngredient
+import com.opencalori.app.domain.model.FoodNameMatching
 import com.opencalori.app.domain.model.RecognizedDish
 import com.opencalori.app.domain.model.RecognizedIngredient
 import kotlinx.serialization.json.Json
@@ -263,7 +264,7 @@ object AiResponseParser {
         return number
     }
 
-    private fun String.normalized(): String = trim().lowercase()
+    private fun String.normalized(): String = FoodNameMatching.fold(this)
 
     private fun stableId(prefix: String, index: Int, value: String): String =
         "$prefix-$index-${value.normalized().hashCode().toUInt().toString(16)}"

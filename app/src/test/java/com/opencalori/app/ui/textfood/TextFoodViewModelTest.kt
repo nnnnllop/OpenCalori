@@ -1,12 +1,15 @@
 package com.opencalori.app.ui.textfood
 
 import androidx.lifecycle.SavedStateHandle
+import com.opencalori.app.domain.model.ApiConfig
 import com.opencalori.app.domain.model.EstimatedIngredient
 import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.domain.model.RecognizedDish
 import com.opencalori.app.domain.model.RecognizedIngredient
 import com.opencalori.app.testing.FakeAiRepository
+import com.opencalori.app.testing.FakeApiConfigStore
 import com.opencalori.app.testing.FakeMealRepository
+import com.opencalori.app.testing.FakeUserPreferences
 import com.opencalori.app.testing.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -26,10 +29,14 @@ class TextFoodViewModelTest {
     private val targetDay = 20_400L
     private val ai = FakeAiRepository()
     private val meals = FakeMealRepository()
+    private val prefs = FakeUserPreferences()
+    private val apiConfig = FakeApiConfigStore(ApiConfig(apiKey = "sk-test"))
 
     private fun viewModel() = TextFoodViewModel(
         ai = ai,
         meals = meals,
+        userPrefs = prefs,
+        apiConfigStore = apiConfig,
         savedStateHandle = SavedStateHandle(mapOf("date" to targetDay))
     )
 
@@ -228,6 +235,62 @@ class TextFoodViewModelTest {
         advanceUntilIdle()
         assertEquals(TextFoodStage.DISHES, vm.state.value.stage)
         assertEquals(0, ai.estimateCalls)
+    }
+
+    /** P0-1: a failing write must not crash the app and must not lock the save button. */
+    @Test
+    fun `a failing diary write shows an error and unlocks saving`() = runTest {
+        seedRecognition()
+        val vm = viewModel()
+        describeAndRecognize(vm)
+        advanceUntilIdle()
+        vm.calculate()
+        advanceUntilIdle()
+        vm.setGrams(0, 0, 180f)
+        vm.setGrams(0, 1, 40f)
+        vm.setGrams(1, 0, 120f)
+        meals.writeFailure = IllegalStateException("disk full")
+
+        vm.save()
+        advanceUntilIdle()
+
+        assertFalse(vm.state.value.saved)
+        assertFalse(vm.state.value.busy)
+        assertEquals("Не удалось сохранить запись. Попробуйте ещё раз.", vm.state.value.error)
+        assertEquals(TextFoodStage.GRAMS, vm.state.value.stage)
+        assertTrue(vm.state.value.canSave)
+    }
+
+    /** P1-7: the text flow is an AI feature and stays closed while the AI is switched off. */
+    @Test
+    fun `nothing is sent when the AI is disabled in settings`() = runTest {
+        seedRecognition()
+        prefs.state.value = prefs.state.value.copy(aiEnabled = false)
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        assertFalse(vm.state.value.aiAvailable)
+        describeAndRecognize(vm)
+        advanceUntilIdle()
+
+        assertEquals(0, ai.recognizeCalls)
+        assertEquals(TextFoodStage.INPUT, vm.state.value.stage)
+    }
+
+    /** P1-7: an unconfigured BYOK key closes it just like the scanner's NOT_CONFIGURED stage. */
+    @Test
+    fun `nothing is sent without a stored api key`() = runTest {
+        seedRecognition()
+        apiConfig.state.value = ApiConfig(apiKey = "")
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        assertFalse(vm.state.value.aiAvailable)
+        assertFalse(vm.state.value.canRecognize)
+        describeAndRecognize(vm)
+        advanceUntilIdle()
+
+        assertEquals(0, ai.recognizeCalls)
     }
 
     @Test

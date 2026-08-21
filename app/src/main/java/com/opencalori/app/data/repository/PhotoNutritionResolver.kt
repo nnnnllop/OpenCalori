@@ -2,9 +2,9 @@ package com.opencalori.app.data.repository
 
 import com.opencalori.app.domain.model.Dish
 import com.opencalori.app.domain.model.EstimatedIngredient
+import com.opencalori.app.domain.model.FoodNameMatching
 import com.opencalori.app.domain.repository.DishRepository
 import kotlinx.coroutines.flow.first
-import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -83,9 +83,7 @@ class PhotoNutritionResolver @Inject constructor(
         return prefix >= minOf(left.length, right.length) - 2 && prefix >= 5
     }
 
-    private fun normalize(value: String): String = value
-        .lowercase(Locale.ROOT)
-        .replace('\u0451', '\u0435')
+    private fun normalize(value: String): String = FoodNameMatching.fold(value)
         .replace(Regex("[^a-z\u0430-\u044f0-9]+"), " ")
         .trim()
         .replace(Regex("\\s+"), " ")

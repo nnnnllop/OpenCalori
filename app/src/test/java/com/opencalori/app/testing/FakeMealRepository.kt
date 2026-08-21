@@ -30,6 +30,9 @@ class FakeMealRepository : MealRepository {
     /** Dish titles passed alongside [addCalls], same order. Null means "no dish title". */
     val addedDishNames = mutableListOf<String?>()
 
+    /** When set, every write fails with it - the full-disk / corrupted-database case. */
+    var writeFailure: Throwable? = null
+
     override fun getMealsForDay(epochDay: Long): Flow<List<Meal>> =
         meals.map { all -> all.filter { it.dateEpochDay == epochDay } }
 
@@ -39,6 +42,7 @@ class FakeMealRepository : MealRepository {
         items: List<FoodItem>,
         dishName: String?
     ): Long {
+        writeFailure?.let { throw it }
         addCalls += Triple(epochDay, mealType, items)
         addedDishNames += dishName?.trim()?.takeIf { it.isNotEmpty() }
         if (items.isEmpty()) return -1
@@ -73,6 +77,7 @@ class FakeMealRepository : MealRepository {
         mealType: MealType,
         dishes: List<MealDishItems>
     ) {
+        writeFailure?.let { throw it }
         dishes.filter { it.items.isNotEmpty() }.forEach { dish ->
             addItems(epochDay, mealType, dish.items, dish.dishName)
         }

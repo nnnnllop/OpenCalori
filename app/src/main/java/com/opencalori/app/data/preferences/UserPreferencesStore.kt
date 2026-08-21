@@ -84,6 +84,25 @@ class UserPreferencesStore @Inject constructor(
         }
     }
 
+    override suspend fun updateMetrics(
+        gender: Gender,
+        age: Int,
+        heightCm: Float,
+        weightKg: Float,
+        activityLevel: ActivityLevel,
+        goal: Goal
+    ) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.GENDER] = gender.name
+            prefs[Keys.AGE] = age
+            prefs[Keys.HEIGHT] = heightCm
+            prefs[Keys.WEIGHT] = weightKg
+            prefs[Keys.ACTIVITY] = activityLevel.name
+            prefs[Keys.GOAL] = goal.name
+            prefs[Keys.ONBOARDED] = true
+        }
+    }
+
     /** Keeps the calorie target in sync with the weight logged in the diary. */
     override suspend fun setWeight(weightKg: Float) {
         context.dataStore.edit { it[Keys.WEIGHT] = weightKg }

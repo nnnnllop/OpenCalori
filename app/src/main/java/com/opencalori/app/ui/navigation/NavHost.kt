@@ -4,10 +4,13 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -49,11 +52,19 @@ fun OpenCaloriNavHost(
     navController: NavHostController = rememberNavController(),
     viewModel: RootViewModel = hiltViewModel()
 ) {
-    val start by viewModel.startDestination.collectAsState()
+    val start by viewModel.startDestination.collectAsStateWithLifecycle()
+
+    // Until the stored profile has been read the start destination is unknown. Drawing the
+    // graph with a guessed one made every cold start flash the onboarding screen.
+    val startDestination = start
+    if (startDestination == null) {
+        Surface(modifier = Modifier.fillMaxSize()) {}
+        return
+    }
 
     NavHost(
         navController = navController,
-        startDestination = start ?: Routes.ONBOARDING,
+        startDestination = startDestination,
         enterTransition = {
             slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(MotionTokens.Screen)) +
                 fadeIn(tween(MotionTokens.Standard))
@@ -106,7 +117,10 @@ fun OpenCaloriNavHost(
             route = Routes.TEXT_FOOD,
             arguments = listOf(navArgument(Routes.ARG_DATE) { type = NavType.LongType })
         ) {
-            TextFoodScreen(onBack = { navController.popBackStack() })
+            TextFoodScreen(
+                onBack = { navController.popBackStack() },
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) }
+            )
         }
 
         composable(Routes.SETTINGS) {

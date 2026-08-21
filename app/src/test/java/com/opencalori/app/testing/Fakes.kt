@@ -1,8 +1,11 @@
 package com.opencalori.app.testing
 
+import com.opencalori.app.domain.model.ActivityLevel
 import com.opencalori.app.domain.model.ApiConfig
 import com.opencalori.app.domain.model.ApiValidationResult
 import com.opencalori.app.domain.model.Dish
+import com.opencalori.app.domain.model.Gender
+import com.opencalori.app.domain.model.Goal
 import com.opencalori.app.domain.model.EstimatedIngredient
 import com.opencalori.app.domain.model.NutritionSourceMode
 import com.opencalori.app.domain.model.PhotoQuality
@@ -27,6 +30,25 @@ class FakeUserPreferences(initial: UserProfile = UserProfile(onboardingCompleted
 
     override suspend fun saveProfile(profile: UserProfile) {
         state.value = profile
+    }
+
+    override suspend fun updateMetrics(
+        gender: Gender,
+        age: Int,
+        heightCm: Float,
+        weightKg: Float,
+        activityLevel: ActivityLevel,
+        goal: Goal
+    ) {
+        state.value = state.value.copy(
+            gender = gender,
+            age = age,
+            heightCm = heightCm,
+            weightKg = weightKg,
+            activityLevel = activityLevel,
+            goal = goal,
+            onboardingCompleted = true
+        )
     }
 
     override suspend fun setWeight(weightKg: Float) {

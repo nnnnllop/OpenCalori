@@ -115,9 +115,26 @@ class ScannerViewModelTest {
         assertNotNull(vm.uiState.value.photo)
     }
 
+    /**
+     * P1-6: the "skip list review" switch used to be dead - nobody read it. Enabling it now
+     * flows from stage 1 straight into the grams estimation, like the other two skip switches.
+     */
     @Test
-    fun `list confirmation remains mandatory even when old skip preference is enabled`() = runTest {
+    fun `the skip list review switch goes straight to the grams estimation`() = runTest {
         prefs.state.value = prefs.state.value.copy(aiSkipListReview = true)
+        ai.dishResult = Result.success(dish())
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        vm.onPhotoTaken(photo())
+        advanceUntilIdle()
+
+        assertEquals(ScannerStage.REVIEW_GRAMS, vm.uiState.value.stage)
+        assertEquals(1, ai.estimateCalls)
+    }
+
+    @Test
+    fun `list confirmation is mandatory while the skip switch is off`() = runTest {
         ai.dishResult = Result.success(dish())
         val vm = viewModel()
         advanceUntilIdle()
@@ -127,6 +144,46 @@ class ScannerViewModelTest {
 
         assertEquals(ScannerStage.REVIEW_DISH, vm.uiState.value.stage)
         assertEquals(0, ai.estimateCalls)
+    }
+
+    /** P0-1: a failing write must not crash the app and must not lock the save button. */
+    @Test
+    fun `a failing diary write shows an error and unlocks saving`() = runTest {
+        ai.dishResult = Result.success(dish())
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.onPhotoTaken(photo())
+        advanceUntilIdle()
+        vm.confirmIngredientsAndEstimate()
+        advanceUntilIdle()
+        vm.proceedToFinal()
+        advanceUntilIdle()
+        val stageBefore = vm.uiState.value.stage
+        meals.writeFailure = IllegalStateException("disk full")
+
+        vm.saveMeal()
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.saving)
+        assertEquals(stageBefore, vm.uiState.value.stage)
+        assertEquals("Не удалось сохранить запись. Попробуйте ещё раз.", vm.uiState.value.error)
+        assertTrue(vm.uiState.value.canSave)
+
+        // The retry after a transient failure goes through.
+        meals.writeFailure = null
+        vm.saveMeal()
+        advanceUntilIdle()
+        assertEquals(ScannerStage.SAVED, vm.uiState.value.stage)
+    }
+
+    /** P1-5: the retry button must not be driven by a stale state snapshot. */
+    @Test
+    fun `retry fields take part in state equality`() {
+        val base = ScannerUiState()
+        assertFalse(base == base.copy(manualRetryAvailable = true))
+        assertFalse(base == base.copy(failedAiStage = ScannerStage.ANALYZING_2))
+        assertFalse(base == base.copy(photo = ByteArray(2) { 7 }))
+        assertEquals(base, base.copy())
     }
 
     @Test

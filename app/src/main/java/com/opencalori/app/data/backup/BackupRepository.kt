@@ -2,6 +2,7 @@ package com.opencalori.app.data.backup
 
 import android.content.Context
 import android.net.Uri
+import androidx.room.withTransaction
 import com.opencalori.app.data.local.AppDatabase
 import com.opencalori.app.di.IoDispatcher
 import com.opencalori.app.domain.model.FoodItem
@@ -183,26 +184,31 @@ class BackupRepository @Inject constructor(
         )
     }
 
-    private suspend fun replaceSnapshot(snapshot: BackupSnapshot): ImportSummary {
-        withContext(io) { database.clearAllTables() }
-        return restoreSnapshot(snapshot).copy(replaced = true)
-    }
+    private suspend fun replaceSnapshot(snapshot: BackupSnapshot): ImportSummary =
+        restoreSnapshot(snapshot).copy(replaced = true)
 
-    private suspend fun restoreSnapshot(snapshot: BackupSnapshot): ImportSummary {
-        withContext(io) { database.clearAllTables() }
-        snapshot.meals.forEach { meal ->
-            if (meal.items.isNotEmpty()) mealRepository.addItems(meal.dateEpochDay, meal.mealType, meal.items, meal.dishName)
+    /**
+     * Wipe and refill in one database transaction: a failure halfway through used to leave the
+     * diary empty, with the imported data gone and the old data already deleted.
+     */
+    private suspend fun restoreSnapshot(snapshot: BackupSnapshot): ImportSummary =
+        database.withTransaction {
+            database.clearAllTables()
+            snapshot.meals.forEach { meal ->
+                if (meal.items.isNotEmpty()) {
+                    mealRepository.addItems(meal.dateEpochDay, meal.mealType, meal.items, meal.dishName)
+                }
+            }
+            snapshot.weights.forEach { weight -> mealRepository.addWeight(weight.dateEpochDay, weight.weightKg) }
+            snapshot.customProducts.forEach { productRepository.addCustomProduct(it) }
+            ImportSummary(
+                meals = snapshot.meals.size,
+                items = snapshot.meals.sumOf { it.items.size },
+                weights = snapshot.weights.size,
+                products = snapshot.customProducts.size,
+                mode = ImportMode.REPLACE
+            )
         }
-        snapshot.weights.forEach { weight -> mealRepository.addWeight(weight.dateEpochDay, weight.weightKg) }
-        snapshot.customProducts.forEach { productRepository.addCustomProduct(it) }
-        return ImportSummary(
-            meals = snapshot.meals.size,
-            items = snapshot.meals.sumOf { it.items.size },
-            weights = snapshot.weights.size,
-            products = snapshot.customProducts.size,
-            mode = ImportMode.REPLACE
-        )
-    }
 
     private fun FoodItem.fingerprint(meal: Meal): String = listOf(
         meal.dateEpochDay,

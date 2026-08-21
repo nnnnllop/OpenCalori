@@ -99,13 +99,15 @@ class ProfileViewModel @Inject constructor(
         val profile = state.toProfile(onboardingCompleted = true) ?: return
         viewModelScope.launch {
             val existing = userPrefs.profile.first()
-            userPrefs.saveProfile(
-                profile.copy(
-                    aiEnabled = existing.aiEnabled,
-                    aiSkipListReview = existing.aiSkipListReview,
-                    aiSkipGramsReview = existing.aiSkipGramsReview,
-                    aiSkipFinalReview = existing.aiSkipFinalReview
-                )
+            // Only the metrics this screen owns are written. Copying a whole profile used to
+            // silently reset every setting the screen does not know about.
+            userPrefs.updateMetrics(
+                gender = profile.gender,
+                age = profile.age,
+                heightCm = profile.heightCm,
+                weightKg = profile.weightKg,
+                activityLevel = profile.activityLevel,
+                goal = profile.goal
             )
             // A changed weight is also a weigh-in, otherwise the chart and the profile drift apart.
             if (existing.weightKg != profile.weightKg) {

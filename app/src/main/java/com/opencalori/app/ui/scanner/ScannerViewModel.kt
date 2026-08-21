@@ -146,6 +146,7 @@ data class ScannerUiState(
         if (other !is ScannerUiState) return false
         return stage == other.stage &&
             photoBase64 == other.photoBase64 &&
+            (photo === other.photo || photo.contentEquals(other.photo)) &&
             dishes == other.dishes &&
             currentDishIndex == other.currentDishIndex &&
             isLocalDraft == other.isLocalDraft &&
@@ -155,6 +156,8 @@ data class ScannerUiState(
             error == other.error &&
             gramsEditMode == other.gramsEditMode &&
             nutritionSourceMode == other.nutritionSourceMode &&
+            failedAiStage == other.failedAiStage &&
+            manualRetryAvailable == other.manualRetryAvailable &&
             saving == other.saving
     }
 
@@ -170,6 +173,9 @@ data class ScannerUiState(
         result = 31 * result + (error?.hashCode() ?: 0)
         result = 31 * result + gramsEditMode.hashCode()
         result = 31 * result + nutritionSourceMode.hashCode()
+        result = 31 * result + (photo?.contentHashCode() ?: 0)
+        result = 31 * result + (failedAiStage?.hashCode() ?: 0)
+        result = 31 * result + manualRetryAvailable.hashCode()
         result = 31 * result + saving.hashCode()
         return result
     }
@@ -194,7 +200,27 @@ class ScannerViewModel @Inject constructor(
     val uiState: StateFlow<ScannerUiState> = _uiState.asStateFlow()
 
     private var analysisJob: Job? = null
+
+    /**
+     * Cancellation is cooperative: a cancelled analysis can still be suspended inside a
+     * provider call when the user retakes, retries or leaves. Every analysis carries a
+     * generation number and only the current generation may write into the state, so a
+     * stale coroutine can no longer resurrect an old stage or an old error.
+     */
+    private var analysisGeneration = 0
     private var photoQuality: PhotoQuality = PhotoQuality.HIGH
+
+    /** Cancels the running analysis and returns the generation the new one must use. */
+    private fun startGeneration(): Int {
+        analysisJob?.cancel()
+        analysisGeneration += 1
+        return analysisGeneration
+    }
+
+    private fun updateIfCurrent(generation: Int, transform: (ScannerUiState) -> ScannerUiState) {
+        if (generation != analysisGeneration) return
+        _uiState.update(transform)
+    }
 
     init {
         viewModelScope.launch {
@@ -236,7 +262,7 @@ class ScannerViewModel @Inject constructor(
     }
 
     private fun analyze(prepare: suspend () -> com.opencalori.app.data.image.PreparedImage) {
-        analysisJob?.cancel()
+        val generation = startGeneration()
         _uiState.update {
             it.copy(
                 stage = ScannerStage.ANALYZING_1,
@@ -246,8 +272,12 @@ class ScannerViewModel @Inject constructor(
             )
         }
         analysisJob = viewModelScope.launch {
-            val prepared = runCatching { prepare() }.getOrElse {
-                _uiState.update {
+            val prepared = try {
+                prepare()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (preparationError: Throwable) {
+                updateIfCurrent(generation) {
                     it.copy(
                         stage = ScannerStage.ERROR,
                         error = "Не удалось подготовить фото. Попробуйте выбрать или сделать другой снимок.",
@@ -258,14 +288,14 @@ class ScannerViewModel @Inject constructor(
                 return@launch
             }
             // The photo is kept even when recognition fails, so a retry costs no new shot.
-            _uiState.update { it.copy(photo = prepared.jpeg, photoBase64 = prepared.base64) }
-            runStage1(prepared.base64)
+            updateIfCurrent(generation) { it.copy(photo = prepared.jpeg, photoBase64 = prepared.base64) }
+            runStage1(prepared.base64, generation)
         }
     }
 
-    private suspend fun runStage1(base64: String, manualRetry: Boolean = false) {
+    private suspend fun runStage1(base64: String, generation: Int, manualRetry: Boolean = false) {
         if (!apiConfigStore.current().isConfigured) {
-            _uiState.update {
+            updateIfCurrent(generation) {
                 it.copy(
                     stage = ScannerStage.NOT_CONFIGURED,
                     error = "\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 \u0418\u0418 \u0432 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0430\u0445, \u0447\u0442\u043e\u0431\u044b \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u0432\u0430\u0442\u044c \u0431\u043b\u044e\u0434\u0430 \u043f\u043e \u0444\u043e\u0442\u043e."
@@ -280,7 +310,7 @@ class ScannerViewModel @Inject constructor(
                     .filter { it.name.isNotBlank() || it.ingredients.isNotEmpty() }
                     .filter { it.ingredients.isNotEmpty() }
                 if (drafts.isEmpty()) {
-                    _uiState.update {
+                    updateIfCurrent(generation) {
                         it.copy(
                             stage = ScannerStage.ERROR,
                             error = "Еда на фото не распознана. Попробуйте снять ближе и при лучшем свете.",
@@ -291,9 +321,11 @@ class ScannerViewModel @Inject constructor(
                     return@onSuccess
                 }
 
-                // Reviewing the result is mandatory: several dishes get their own list step so the
-                // user can drop or rename one before any grams are estimated.
-                _uiState.update {
+                // Several dishes get their own list step so the user can drop or rename one
+                // before any grams are estimated. The skip-list-review switch trades that step
+                // away and flows straight into the grams estimation.
+                val skipListReview = profile().aiSkipListReview
+                updateIfCurrent(generation) {
                     it.copy(
                         dishes = drafts,
                         currentDishIndex = 0,
@@ -303,9 +335,10 @@ class ScannerViewModel @Inject constructor(
                         error = null
                     )
                 }
+                if (skipListReview) runStage2(base64, generation)
             }
             .onFailure { throwable ->
-                fail(throwable, "Не удалось распознать еду на фото. Повторите текущий шаг.", ScannerStage.ANALYZING_1)
+                fail(generation, throwable, "Не удалось распознать еду на фото. Повторите текущий шаг.", ScannerStage.ANALYZING_1)
             }
     }
 
@@ -398,12 +431,12 @@ class ScannerViewModel @Inject constructor(
             _uiState.update { it.copy(currentDishIndex = it.currentDishIndex + 1, error = null) }
             return
         }
-        analysisJob?.cancel()
-        analysisJob = viewModelScope.launch { runStage2(photo) }
+        val generation = startGeneration()
+        analysisJob = viewModelScope.launch { runStage2(photo, generation) }
     }
 
-    private suspend fun runStage2(photo: String, manualRetry: Boolean = false) {
-        _uiState.update {
+    private suspend fun runStage2(photo: String, generation: Int, manualRetry: Boolean = false) {
+        updateIfCurrent(generation) {
             it.copy(
                 stage = ScannerStage.ANALYZING_2,
                 error = null,
@@ -414,7 +447,7 @@ class ScannerViewModel @Inject constructor(
 
         val dishes = _uiState.value.dishes.filter { it.confirmedIngredientNames.isNotEmpty() }
         if (dishes.isEmpty()) {
-            _uiState.update {
+            updateIfCurrent(generation) {
                 it.copy(stage = ScannerStage.REVIEW_DISH, error = "\u0421\u043f\u0438\u0441\u043e\u043a \u0438\u043d\u0433\u0440\u0435\u0434\u0438\u0435\u043d\u0442\u043e\u0432 \u043f\u0443\u0441\u0442")
             }
             return
@@ -438,6 +471,7 @@ class ScannerViewModel @Inject constructor(
                 }
                 if (estimate.isFailure) {
                     fail(
+                        generation,
                         estimate.exceptionOrNull() ?: IllegalStateException(),
                         "Не удалось рассчитать КБЖУ. Повторите текущий шаг.",
                         ScannerStage.ANALYZING_2
@@ -446,7 +480,7 @@ class ScannerViewModel @Inject constructor(
                 }
                 val estimated = estimate.getOrThrow()
                 if (estimated.isEmpty()) {
-                    _uiState.update {
+                    updateIfCurrent(generation) {
                         it.copy(
                             stage = ScannerStage.REVIEW_DISH,
                             currentDishIndex = index,
@@ -464,11 +498,11 @@ class ScannerViewModel @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
-                fail(error, "\u041e\u0448\u0438\u0431\u043a\u0430 \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0433\u043e \u0441\u043e\u043f\u043e\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u0438\u044f \u043f\u0440\u043e\u0434\u0443\u043a\u0442\u043e\u0432")
+                fail(generation, error, "\u041e\u0448\u0438\u0431\u043a\u0430 \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0433\u043e \u0441\u043e\u043f\u043e\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u0438\u044f \u043f\u0440\u043e\u0434\u0443\u043a\u0442\u043e\u0432")
                 return
             }
             if (!localResolution.isComplete) {
-                _uiState.update {
+                updateIfCurrent(generation) {
                     it.copy(
                         stage = ScannerStage.REVIEW_DISH,
                         currentDishIndex = index,
@@ -497,7 +531,7 @@ class ScannerViewModel @Inject constructor(
         }
 
         val anyDraft = resolved.any { it.localDish == null } && nutritionMode != NutritionSourceMode.AI_ONLY
-        _uiState.update {
+        updateIfCurrent(generation) {
             it.copy(
                 dishes = resolved,
                 currentDishIndex = 0,
@@ -505,15 +539,15 @@ class ScannerViewModel @Inject constructor(
                 unmatchedIngredients = emptyList()
             )
         }
-        openEstimatedResult()
+        openEstimatedResult(generation)
     }
 
-    private suspend fun openEstimatedResult() {
+    private suspend fun openEstimatedResult(generation: Int) {
         val profile = profile()
         when {
             profile.aiSkipGramsReview && profile.aiSkipFinalReview -> saveMeal()
-            profile.aiSkipGramsReview -> _uiState.update { it.copy(stage = ScannerStage.REVIEW_FINAL) }
-            else -> _uiState.update { it.copy(stage = ScannerStage.REVIEW_GRAMS) }
+            profile.aiSkipGramsReview -> updateIfCurrent(generation) { it.copy(stage = ScannerStage.REVIEW_FINAL) }
+            else -> updateIfCurrent(generation) { it.copy(stage = ScannerStage.REVIEW_GRAMS) }
         }
     }
 
@@ -595,19 +629,30 @@ class ScannerViewModel @Inject constructor(
         val state = _uiState.value
         val dishes = state.dishes.filter { it.estimated.isNotEmpty() }
         if (dishes.isEmpty() || state.saving) return
-        _uiState.update { it.copy(saving = true) }
+        _uiState.update { it.copy(saving = true, error = null) }
         viewModelScope.launch {
-            mealRepository.addDishItems(
-                epochDay = targetEpochDay,
-                mealType = state.mealType,
-                dishes = dishes.map { dish ->
-                    MealDishItems(
-                        dishName = dish.name.takeIf { it.isNotBlank() },
-                        items = dish.estimated.map { it.toFoodItem() }
-                    )
-                }
-            )
-            _uiState.update { it.copy(stage = ScannerStage.SAVED, saving = false) }
+            // A failing write (full disk, corrupted database) used to crash the app and leave
+            // saving stuck at true. The stage is kept so the reviewed data stays on screen and
+            // the user can simply tap save again.
+            val outcome = runCatching {
+                mealRepository.addDishItems(
+                    epochDay = targetEpochDay,
+                    mealType = state.mealType,
+                    dishes = dishes.map { dish ->
+                        MealDishItems(
+                            dishName = dish.name.takeIf { it.isNotBlank() },
+                            items = dish.estimated.map { it.toFoodItem() }
+                        )
+                    }
+                )
+            }
+            val failure = outcome.exceptionOrNull()
+            if (failure is CancellationException) throw failure
+            if (failure == null) {
+                _uiState.update { it.copy(stage = ScannerStage.SAVED, saving = false, error = null) }
+            } else {
+                _uiState.update { it.copy(saving = false, error = SAVE_FAILED_MESSAGE) }
+            }
         }
     }
 
@@ -615,13 +660,13 @@ class ScannerViewModel @Inject constructor(
 
     /** Stops an in-flight request and returns to the viewfinder. */
     fun cancelAnalysis() {
-        analysisJob?.cancel()
+        startGeneration()
         analysisJob = null
         _uiState.update { it.copy(stage = ScannerStage.CAPTURE, error = null) }
     }
 
     fun retake() {
-        analysisJob?.cancel()
+        startGeneration()
         analysisJob = null
         _uiState.update {
             ScannerUiState(
@@ -639,7 +684,7 @@ class ScannerViewModel @Inject constructor(
         val photo = state.photoBase64
         val failedStage = state.failedAiStage
         if (photo == null || failedStage == null) return
-        analysisJob?.cancel()
+        val generation = startGeneration()
         _uiState.update {
             it.copy(
                 stage = failedStage,
@@ -650,8 +695,8 @@ class ScannerViewModel @Inject constructor(
         }
         analysisJob = viewModelScope.launch {
             when (failedStage) {
-                ScannerStage.ANALYZING_1 -> runStage1(photo, manualRetry = true)
-                ScannerStage.ANALYZING_2 -> runStage2(photo, manualRetry = true)
+                ScannerStage.ANALYZING_1 -> runStage1(photo, generation, manualRetry = true)
+                ScannerStage.ANALYZING_2 -> runStage2(photo, generation, manualRetry = true)
                 else -> Unit
             }
         }
@@ -676,9 +721,14 @@ class ScannerViewModel @Inject constructor(
         }
     }
 
-    private fun fail(throwable: Throwable, fallback: String, failedStage: ScannerStage? = null) {
+    private fun fail(
+        generation: Int,
+        throwable: Throwable,
+        fallback: String,
+        failedStage: ScannerStage? = null
+    ) {
         if (throwable is CancellationException) throw throwable
-        _uiState.update {
+        updateIfCurrent(generation) {
             it.copy(
                 stage = ScannerStage.ERROR,
                 error = throwable.aiUserMessage(fallback),
@@ -688,6 +738,8 @@ class ScannerViewModel @Inject constructor(
         }
     }
 }
+
+private const val SAVE_FAILED_MESSAGE = "Не удалось сохранить запись. Попробуйте ещё раз."
 
 private fun ScannerUiState.replaceDish(index: Int, transform: (DishDraft) -> DishDraft): ScannerUiState =
     copy(dishes = dishes.mapIndexed { i, dish -> if (i == index) transform(dish) else dish })

@@ -38,7 +38,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.ui.components.NumberField
 import com.opencalori.app.ui.theme.AppShapes
@@ -62,9 +62,10 @@ import com.opencalori.app.ui.util.NumberFormat
 @Composable
 fun TextFoodScreen(
     onBack: () -> Unit,
+    onOpenSettings: () -> Unit,
     viewModel: TextFoodViewModel = hiltViewModel()
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(state.saved) {
         if (state.saved) onBack()
@@ -106,10 +107,39 @@ fun TextFoodScreen(
                 }
             }
 
-            when (state.stage) {
-                TextFoodStage.INPUT -> InputStep(state, viewModel)
-                TextFoodStage.DISHES -> DishesStep(state, viewModel)
-                TextFoodStage.GRAMS -> GramsStep(state, viewModel)
+            if (!state.aiAvailable) {
+                AiUnavailableNotice(onOpenSettings)
+            } else {
+                when (state.stage) {
+                    TextFoodStage.INPUT -> InputStep(state, viewModel)
+                    TextFoodStage.DISHES -> DishesStep(state, viewModel)
+                    TextFoodStage.GRAMS -> GramsStep(state, viewModel)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The text flow is an AI feature end to end: with the AI switched off or no key stored the
+ * description field is never shown, so nothing can be typed for sending.
+ */
+@Composable
+private fun AiUnavailableNotice(onOpenSettings: () -> Unit) {
+    Card(Modifier.fillMaxWidth(), shape = AppShapes.Small) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                "ИИ выключен",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "Описание еды разбирает модель по вашему ключу. Пока ИИ выключен или ключ не добавлен, текст никуда не отправляется. Записать еду можно вручную через поиск продуктов.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Button(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
+                Text("Открыть настройки")
             }
         }
     }

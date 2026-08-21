@@ -9,8 +9,10 @@ import com.opencalori.app.domain.model.MealType
 import com.opencalori.app.domain.model.RecognizedDish
 import com.opencalori.app.domain.model.RecognizedIngredient
 import com.opencalori.app.domain.repository.AiRepository
+import com.opencalori.app.domain.repository.ApiConfigStore
 import com.opencalori.app.domain.repository.MealDishItems
 import com.opencalori.app.domain.repository.MealRepository
+import com.opencalori.app.domain.repository.UserPreferences
 import com.opencalori.app.ui.navigation.Routes
 import com.opencalori.app.ui.util.FoodQuantityValidation
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,6 +20,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -52,9 +56,14 @@ data class TextFoodState(
     val saved: Boolean = false,
     val error: String? = null,
     /** Retry of the failed AI step stays available until the query changes. */
-    val manualRetryAvailable: Boolean = false
+    val manualRetryAvailable: Boolean = false,
+    /**
+     * The whole screen is an AI feature, so it stays closed while the AI is switched off or
+     * no BYOK key is stored - exactly like the scanner's NOT_CONFIGURED stage.
+     */
+    val aiAvailable: Boolean = true
 ) {
-    val canRecognize: Boolean get() = query.trim().length >= 2 && !busy
+    val canRecognize: Boolean get() = aiAvailable && query.trim().length >= 2 && !busy
 
     val canCalculate: Boolean get() = !busy && dishes.isNotEmpty() && dishes.all { it.names.isNotEmpty() }
 
@@ -75,6 +84,8 @@ data class TextFoodState(
 class TextFoodViewModel @Inject constructor(
     private val ai: AiRepository,
     private val meals: MealRepository,
+    private val userPrefs: UserPreferences,
+    private val apiConfigStore: ApiConfigStore,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -84,6 +95,14 @@ class TextFoodViewModel @Inject constructor(
     private val _state = MutableStateFlow(TextFoodState())
     val state: StateFlow<TextFoodState> = _state.asStateFlow()
 
+    init {
+        viewModelScope.launch {
+            combine(userPrefs.profile, apiConfigStore.config) { profile, config ->
+                profile.aiEnabled && config.isConfigured
+            }.collect { available -> _state.update { it.copy(aiAvailable = available) } }
+        }
+    }
+
     fun setQuery(value: String) = _state.update {
         it.copy(query = value.take(MAX_QUERY_LENGTH), error = null, manualRetryAvailable = false)
     }
@@ -92,7 +111,7 @@ class TextFoodViewModel @Inject constructor(
 
     fun recognize(manualRetry: Boolean = false) {
         val description = _state.value.query.trim()
-        if (description.length < 2 || _state.value.busy) return
+        if (!_state.value.aiAvailable || description.length < 2 || _state.value.busy) return
         _state.update {
             it.copy(
                 busy = true,
@@ -101,6 +120,12 @@ class TextFoodViewModel @Inject constructor(
             )
         }
         viewModelScope.launch {
+            // Checked again right before sending: the state flag can still be optimistic while
+            // the settings flow is warming up, and nothing must leave the device meanwhile.
+            if (!aiAllowed()) {
+                _state.update { it.copy(busy = false, aiAvailable = false, error = null) }
+                return@launch
+            }
             val result = try {
                 ai.recognizeTextDishes(description)
             } catch (cancelled: CancellationException) {
@@ -275,21 +300,34 @@ class TextFoodViewModel @Inject constructor(
     fun save() {
         val state = _state.value
         if (!state.canSave) return
-        _state.update { it.copy(busy = true) }
+        _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
-            meals.addDishItems(
-                epochDay = targetEpochDay,
-                mealType = state.mealType,
-                dishes = state.dishes.map { dish ->
-                    MealDishItems(
-                        dishName = dish.name.takeIf { it.isNotBlank() },
-                        items = dish.estimated.map { it.toFoodItem() }
-                    )
-                }
-            )
-            _state.update { it.copy(busy = false, saved = true) }
+            // A failing write (full disk, corrupted database) used to crash the app and leave
+            // busy stuck at true. The typed weights stay on screen for another attempt.
+            val outcome = runCatching {
+                meals.addDishItems(
+                    epochDay = targetEpochDay,
+                    mealType = state.mealType,
+                    dishes = state.dishes.map { dish ->
+                        MealDishItems(
+                            dishName = dish.name.takeIf { it.isNotBlank() },
+                            items = dish.estimated.map { it.toFoodItem() }
+                        )
+                    }
+                )
+            }
+            val failure = outcome.exceptionOrNull()
+            if (failure is CancellationException) throw failure
+            if (failure == null) {
+                _state.update { it.copy(busy = false, saved = true, error = null) }
+            } else {
+                _state.update { it.copy(busy = false, error = SAVE_FAILED_MESSAGE) }
+            }
         }
     }
+
+    private suspend fun aiAllowed(): Boolean =
+        userPrefs.profile.first().aiEnabled && apiConfigStore.current().isConfigured
 
     private fun updateDish(dishIndex: Int, transform: (TextDishDraft) -> TextDishDraft) {
         _state.update { state ->
@@ -307,5 +345,6 @@ class TextFoodViewModel @Inject constructor(
     private companion object {
         const val MAX_QUERY_LENGTH = 1_000
         const val MAX_ITEM_NAME_LENGTH = 120
+        const val SAVE_FAILED_MESSAGE = "Не удалось сохранить запись. Попробуйте ещё раз."
     }
 }

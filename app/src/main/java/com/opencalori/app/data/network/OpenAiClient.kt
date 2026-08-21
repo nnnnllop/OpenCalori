@@ -96,41 +96,23 @@ class OpenAiClient @Inject constructor() {
             val error = result as Result.HttpError
             val advised = error.retryAfterSeconds
             val backoff = TRANSIENT_BACKOFF_SECONDS.elementAtOrNull(attempt) ?: TRANSIENT_BACKOFF_SECONDS.last()
-            var waitSeconds = (advised ?: backoff).coerceIn(1, MAX_TRANSIENT_WAIT_SECONDS)
             // Providers with a tokens-per-minute quota (Groq free tier) reject the whole
             // reservation (prompt + max_tokens), so a generous budget always 429s there.
-            // The "Limit 8000, Used 4699, Requested 5353" line lets us shrink max_tokens
-            // to what actually fits and retry immediately instead of waiting the window out.
-            tpmBudget(error.body, effectiveBudget(config, budget))?.let { fitted ->
-                budget = fitted
-                if (fitted >= MIN_FITTED_TOKENS) waitSeconds = 1
+            // The "Limit 8000, Used 4699, Requested 5353" line tells us how much is still
+            // free: if something fits we shrink max_tokens and go now, otherwise the window
+            // is spent and the provider's own advice ("try again in 27.4s") is honoured.
+            val plan = TpmPlanner.plan(error.body, effectiveBudget(config, budget))
+            if (plan != null) budget = plan.budget
+            val waitSeconds = if (plan?.retryImmediately == true) {
+                1L
+            } else {
+                (advised ?: backoff).coerceIn(1, MAX_TRANSIENT_WAIT_SECONDS)
             }
             delay(waitSeconds * 1000)
             attempt++
             result = callOnce(config, messages, budget, preferJsonMode)
         }
         return result
-    }
-
-    /**
-     * A max_tokens value that fits the provider's current TPM window, parsed from a Groq-style
-     * rate-limit body; null when the body carries no quota numbers. When the remaining window
-     * is too small even for the floor, the suggestion is what fits a fully reset window.
-     */
-    private fun tpmBudget(body: String, lastReserved: Int): Int? {
-        val match = TPM_LINE.find(body) ?: return null
-        val limit = match.groupValues[1].toLongOrNull() ?: return null
-        // Groq's 413 variant ("Request too large ... Limit 8000, Requested 16830") has no Used.
-        val used = match.groupValues[2].takeIf { it.isNotBlank() }?.toLongOrNull() ?: 0L
-        val requested = match.groupValues[3].takeIf { it.isNotBlank() }?.toLongOrNull()
-            ?: match.groupValues[2].toLongOrNull() ?: return null
-        val promptTokens = (requested - lastReserved).coerceIn(0L, limit)
-        val freeNow = limit - used - promptTokens
-        val freshWindow = limit - promptTokens - 256
-        return when {
-            freeNow >= MIN_FITTED_TOKENS -> freeNow.coerceAtMost(MAX_TOKENS_CAP.toLong()).toInt()
-            else -> freshWindow.coerceIn(MIN_FITTED_TOKENS.toLong(), MAX_TOKENS_CAP.toLong()).toInt()
-        }
     }
 
     private fun Result.isTransientRetryable(): Boolean =
@@ -270,12 +252,10 @@ class OpenAiClient @Inject constructor() {
     }
 
     private companion object {
-        const val MAX_TOKENS_CAP = 32768
-        const val MIN_FITTED_TOKENS = 512
+        const val MAX_TOKENS_CAP = TpmPlanner.MAX_TOKENS_CAP
         const val MAX_TRANSIENT_ATTEMPTS = 3
         const val MAX_TRANSIENT_WAIT_SECONDS = 45L
         val TRANSIENT_BACKOFF_SECONDS = longArrayOf(8, 16, 30)
         val RETRY_AFTER_IN_BODY = Regex("try again in ([0-9]+(?:\\.[0-9]+)?)\\s*s", RegexOption.IGNORE_CASE)
-        val TPM_LINE = Regex("Limit ([0-9]+), (?:Used ([0-9]+), )?Requested ([0-9]+)")
     }
 }

@@ -1,7 +1,10 @@
 package com.opencalori.app.domain.repository
 
+import com.opencalori.app.domain.model.ActivityLevel
 import com.opencalori.app.domain.model.ApiConfig
 import com.opencalori.app.domain.model.Dish
+import com.opencalori.app.domain.model.Gender
+import com.opencalori.app.domain.model.Goal
 import com.opencalori.app.domain.model.NutritionSourceMode
 import com.opencalori.app.domain.model.PhotoQuality
 import com.opencalori.app.domain.model.ApiValidationResult
@@ -123,6 +126,20 @@ interface AiRepository {
 interface UserPreferences {
     val profile: Flow<UserProfile>
     suspend fun saveProfile(profile: UserProfile)
+
+    /**
+     * Writes only the body metrics and the goal. Every AI setting is left untouched, so the
+     * profile screen can never reset something it does not even show.
+     */
+    suspend fun updateMetrics(
+        gender: Gender,
+        age: Int,
+        heightCm: Float,
+        weightKg: Float,
+        activityLevel: ActivityLevel,
+        goal: Goal
+    )
+
     suspend fun setWeight(weightKg: Float)
     suspend fun setAiEnabled(enabled: Boolean)
     suspend fun setAiSkipListReview(skip: Boolean)

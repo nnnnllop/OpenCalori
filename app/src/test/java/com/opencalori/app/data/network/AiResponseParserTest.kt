@@ -261,6 +261,18 @@ class AiResponseParserTest {
         assertEquals(2, partial.items.size)
     }
 
+    @Test
+    fun `yo and ye are the same product for confirmed matching`() {
+        // подтверждено «гречка», модель вернула «Грёчка» (ё + заглавная)
+        val raw = """{"ingredients":[{"name":"Грёчка","rawGrams":0,"cookedGrams":0,"calories":110,"protein":4,"fat":1,"carbs":21,"notes":""}]}"""
+        val items = AiResponseParser.parseNutrition(
+            raw,
+            confirmedNames = listOf("гречка"),
+            weightPolicy = AiResponseParser.NutritionWeightPolicy.USER_INPUT_ONLY
+        )
+        assertEquals(listOf("гречка"), items.map { it.name })
+    }
+
     private fun assertError(expected: AiPipelineError, block: () -> Unit) {
         val error = assertThrows(AiPipelineException::class.java, block)
         assertEquals(expected, error.pipelineError)

@@ -20,7 +20,15 @@ interface MealDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFoodItems(items: List<FoodItemEntity>)
 
-    @Query("SELECT * FROM meals WHERE dateEpochDay = :epochDay AND mealType = :mealType LIMIT 1")
+    /**
+     * The unnamed meal card of the day and type. A missing dish title is stored as NULL
+     * (MealEntity.dishName is nullable and blank titles are folded to null before insert),
+     * so a manual product can never be appended into a recognised dish of the same meal.
+     */
+    @Query(
+        "SELECT * FROM meals WHERE dateEpochDay = :epochDay AND mealType = :mealType " +
+            "AND dishName IS NULL LIMIT 1"
+    )
     suspend fun findMeal(epochDay: Long, mealType: String): MealEntity?
     @Query("SELECT * FROM meals WHERE dateEpochDay = :epochDay AND mealType = :mealType AND dishName = :dishName LIMIT 1")
     suspend fun findMealByDishName(epochDay: Long, mealType: String, dishName: String): MealEntity?

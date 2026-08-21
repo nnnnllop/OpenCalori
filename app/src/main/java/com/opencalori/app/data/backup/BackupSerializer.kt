@@ -6,6 +6,8 @@ import com.opencalori.app.domain.model.Gender
 import com.opencalori.app.domain.model.Goal
 import com.opencalori.app.domain.model.Meal
 import com.opencalori.app.domain.model.MealType
+import com.opencalori.app.domain.model.NutritionSourceMode
+import com.opencalori.app.domain.model.PhotoQuality
 import com.opencalori.app.domain.model.Product
 import com.opencalori.app.domain.model.ProductSource
 import com.opencalori.app.domain.model.UserProfile
@@ -90,7 +92,13 @@ data class ProfileDto(
     val aiEnabled: Boolean = true,
     val aiSkipListReview: Boolean = false,
     val aiSkipGramsReview: Boolean = false,
-    val aiSkipFinalReview: Boolean = false
+    val aiSkipFinalReview: Boolean = false,
+    /**
+     * Absent in backups written before these settings existed, which is why both default to
+     * the app defaults instead of failing the import (ignoreUnknownKeys covers the other way).
+     */
+    val nutritionSourceMode: String = NutritionSourceMode.AI_ONLY.name,
+    val photoQuality: String = PhotoQuality.HIGH.name
 ) {
     fun toDomain() = UserProfile(
         gender = enumOrDefault(gender, Gender.MALE),
@@ -103,7 +111,9 @@ data class ProfileDto(
         aiEnabled = aiEnabled,
         aiSkipListReview = aiSkipListReview,
         aiSkipGramsReview = aiSkipGramsReview,
-        aiSkipFinalReview = aiSkipFinalReview
+        aiSkipFinalReview = aiSkipFinalReview,
+        nutritionSourceMode = enumOrDefault(nutritionSourceMode, NutritionSourceMode.AI_ONLY),
+        photoQuality = enumOrDefault(photoQuality, PhotoQuality.HIGH)
     )
 
     companion object {
@@ -118,7 +128,9 @@ data class ProfileDto(
             aiEnabled = profile.aiEnabled,
             aiSkipListReview = profile.aiSkipListReview,
             aiSkipGramsReview = profile.aiSkipGramsReview,
-            aiSkipFinalReview = profile.aiSkipFinalReview
+            aiSkipFinalReview = profile.aiSkipFinalReview,
+            nutritionSourceMode = profile.nutritionSourceMode.name,
+            photoQuality = profile.photoQuality.name
         )
     }
 }
