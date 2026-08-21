@@ -163,6 +163,25 @@ class ApiErrorMessagesTest {
     }
 
     @Test
+    fun `groq max_tokens ceiling is parsed and clamped`() {
+        assertEquals(
+            16384,
+            ApiErrorMessages.maxTokensCeiling(
+                "`max_tokens` must be less than or equal to `16384`, the maximum value for `max_tokens` is less than the `context_window` for this model"
+            )
+        )
+    }
+
+    @Test
+    fun `field rejection is not mistaken for a ceiling`() {
+        assertNull(
+            ApiErrorMessages.maxTokensCeiling(
+                "Unsupported parameter: 'max_tokens' is not supported with this model."
+            )
+        )
+    }
+
+    @Test
     fun `unrelated 400 bodies produce no hints`() {
         assertTrue(ApiErrorMessages.unsupportedParameterHints("invalid request body").isEmpty())
         assertTrue(ApiErrorMessages.unsupportedParameterHints("").isEmpty())

@@ -22,7 +22,9 @@ data class ChatCompletionRequest(
     @SerialName("max_completion_tokens") val maxCompletionTokens: Int? = null,
     // Null is omitted from the payload (explicitNulls = false), which some reasoning models require.
     val temperature: Float? = 0.2f,
-    @SerialName("response_format") val responseFormat: JsonResponseFormat? = null
+    @SerialName("response_format") val responseFormat: JsonResponseFormat? = null,
+    // Groq-only switch that keeps reasoning models from flooding the answer with <think>.
+    @SerialName("reasoning_format") val reasoningFormat: String? = null
 )
 
 /** OpenAI-compatible JSON mode, sent only to known compatible providers. */

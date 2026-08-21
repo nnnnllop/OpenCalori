@@ -239,6 +239,28 @@ class AiResponseParserTest {
         assertEquals(2, dishes.size)
     }
 
+    @Test
+    fun `partial answer reports missing positions instead of failing`() {
+        val partial = AiResponseParser.parseNutritionAllowPartial(
+            """{"ingredients":[${nutritionJsonBody("рис")}]}""",
+            confirmedNames = listOf("рис", "куриное филе", "соус"),
+            weightPolicy = AiResponseParser.NutritionWeightPolicy.PHOTO_ESTIMATE
+        )
+        assertEquals(listOf("рис"), partial.items.map { it.name })
+        assertEquals(listOf("куриное филе", "соус"), partial.missing)
+    }
+
+    @Test
+    fun `complete answer has empty missing list`() {
+        val partial = AiResponseParser.parseNutritionAllowPartial(
+            """{"ingredients":[${nutritionJsonBody("рис")},${nutritionJsonBody("куриное филе")}]}""",
+            confirmedNames = listOf("рис", "куриное филе"),
+            weightPolicy = AiResponseParser.NutritionWeightPolicy.PHOTO_ESTIMATE
+        )
+        assertTrue(partial.missing.isEmpty())
+        assertEquals(2, partial.items.size)
+    }
+
     private fun assertError(expected: AiPipelineError, block: () -> Unit) {
         val error = assertThrows(AiPipelineException::class.java, block)
         assertEquals(expected, error.pipelineError)

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -48,6 +49,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -1133,100 +1135,25 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
     ) {
         ScanFlowProgress(currentStep = 4)
         Spacer(Modifier.height(16.dp))
-        Text("Итоговый расчёт", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        FinalTotalsCard(
+            calories = state.totalCalories,
+            protein = state.totalProtein,
+            fat = state.totalFat,
+            carbs = state.totalCarbs,
+            mealLabel = state.mealType.label,
+            multiDish = state.hasMultipleDishes
+        )
+        Spacer(Modifier.height(8.dp))
         Text(
-            if (state.hasMultipleDishes) {
-                "Каждое блюдо сохранится отдельной записью в " + state.mealType.label.lowercase() + "."
-            } else {
-                "Проверьте значения перед сохранением"
-            },
-            style = MaterialTheme.typography.bodyMedium,
+            "Результат ИИ ориентировочный — проверьте порцию и состав перед сохранением.",
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(12.dp))
-        Card(
-            Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-        ) {
-            Text(
-                "Результат ИИ ориентировочный: проверьте порцию, состав и КБЖУ перед сохранением.",
-                modifier = Modifier.padding(12.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             state.dishes.forEachIndexed { _, dish ->
                 if (dish.estimated.isEmpty()) return@forEachIndexed
-                item(key = "final-dish-" + dish.id) {
-                    DishSectionHeader(
-                        name = dish.name,
-                        subtitle = dish.totalCalories.toInt().toString() + " ккал"
-                    )
-                }
-                itemsIndexed(
-                    items = dish.estimated,
-                    key = { _, item -> "final-" + dish.id + "-" + item.id }
-                ) { _, item ->
-                    Card(Modifier.fillMaxWidth(), shape = AppShapes.Small) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text(
-                                item.name,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            // Column instead of a Row: grams and kcal must never squeeze each other.
-                            Text(
-                                NumberFormat.compact(item.effectiveGrams) + " г" +
-                                    if (item.notes.isBlank()) "" else " (" + item.notes + ")",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                item.totalCalories.toInt().toString() + " ккал",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                "Б " + item.totalProtein.toInt() + " • Ж " + item.totalFat.toInt() +
-                                    " • У " + item.totalCarbs.toInt(),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        Card(
-            Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-        ) {
-            Column(
-                Modifier.padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    state.totalCalories.toInt().toString(),
-                    style = MaterialTheme.typography.displaySmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "ккал • " + state.mealType.label,
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Б " + state.totalProtein.toInt() + " г • Ж " + state.totalFat.toInt() +
-                        " г • У " + state.totalCarbs.toInt() + " г",
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center
-                )
+                item(key = "final-dish-" + dish.id) { FinalDishCard(dish) }
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -1238,6 +1165,148 @@ private fun ReviewFinalStage(state: ScannerUiState, viewModel: ScannerViewModel)
                 .navigationBarsPadding()
         ) {
             Text(if (state.saving) "Сохраняем…" else "Сохранить в дневник")
+        }
+    }
+}
+
+/** The headline of the final report: calories first, macros as a proportional bar. */
+@Composable
+private fun FinalTotalsCard(
+    calories: Float,
+    protein: Float,
+    fat: Float,
+    carbs: Float,
+    mealLabel: String,
+    multiDish: Boolean
+) {
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = AppShapes.Large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Column(Modifier.padding(20.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                calories.toInt().toString(),
+                style = MaterialTheme.typography.displayMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Text(
+                "ккал · " + mealLabel.lowercase() + (if (multiDish) " · отдельная запись на блюдо" else ""),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Spacer(Modifier.height(12.dp))
+            MacroDistributionBar(protein = protein, fat = fat, carbs = carbs)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Б " + protein.toInt() + " г · Ж " + fat.toInt() + " г · У " + carbs.toInt() + " г",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
+    }
+}
+
+/** Protein/fat/carbs share of total calories, sized by their 4/4/9 energy contribution. */
+@Composable
+private fun MacroDistributionBar(protein: Float, fat: Float, carbs: Float) {
+    val proteinKcal = (protein * 4f).coerceAtLeast(0f)
+    val fatKcal = (fat * 9f).coerceAtLeast(0f)
+    val carbsKcal = (carbs * 4f).coerceAtLeast(0f)
+    val total = proteinKcal + fatKcal + carbsKcal
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(10.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        if (total > 0f) {
+            Spacer(
+                Modifier
+                    .weight(proteinKcal)
+                    .fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.primary)
+            )
+            Spacer(
+                Modifier
+                    .weight(fatKcal)
+                    .fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.tertiary)
+            )
+            Spacer(
+                Modifier
+                    .weight(carbsKcal)
+                    .fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.secondary)
+            )
+        }
+    }
+}
+
+/** One dish with its products as compact rows; dividers instead of cards inside a card. */
+@Composable
+private fun FinalDishCard(dish: DishDraft) {
+    val dishGrams = dish.estimated.sumOf { it.effectiveGrams.toDouble() }.toFloat()
+    Card(Modifier.fillMaxWidth(), shape = AppShapes.Medium) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                dish.name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                dish.totalCalories.toInt().toString() + " ккал · " +
+                    NumberFormat.compact(dishGrams) + " г",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            dish.estimated.forEachIndexed { index, item ->
+                if (index > 0) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                } else {
+                    Spacer(Modifier.height(8.dp))
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            item.name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            NumberFormat.compact(item.effectiveGrams) + " г" +
+                                (if (item.notes.isBlank()) "" else " · " + item.notes) +
+                                " · Б " + item.totalProtein.toInt() +
+                                " Ж " + item.totalFat.toInt() +
+                                " У " + item.totalCarbs.toInt(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        item.totalCalories.toInt().toString(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
         }
     }
 }

@@ -75,6 +75,19 @@ object ApiErrorMessages {
     }
 
     /**
+     * The provider's own cap for max_tokens ("`max_tokens` must be less than or equal to `16384`"),
+     * or null. Unlike a field rejection this means "send a smaller number in the same field".
+     */
+    fun maxTokensCeiling(body: String): Int? {
+        val text = (providerMessage(body) ?: body).lowercase()
+        if (!text.contains("max_tokens")) return null
+        val match = MAX_TOKENS_CEILING.find(text) ?: return null
+        return match.groupValues[1].toIntOrNull()
+    }
+
+    private val MAX_TOKENS_CEILING = Regex("(?:less than or equal to|at most|may not be greater than|maximum)[^0-9]{0,60}([0-9]{3,6})")
+
+    /**
      * Extracts optional request parameters the provider explicitly rejected in a 400 answer.
      * Typical examples: "Unsupported parameter: 'max_tokens'", "response_format is not supported",
      * "temperature does not support 0.2 with this model". Groq also rejects json_object itself
@@ -93,6 +106,7 @@ object ApiErrorMessages {
             hints += "response_format"
         }
         if (text.contains("temperature")) hints += "temperature"
+        if (text.contains("reasoning_format")) hints += "reasoning_format"
         return hints
     }
 }

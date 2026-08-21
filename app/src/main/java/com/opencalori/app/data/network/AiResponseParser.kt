@@ -75,6 +75,24 @@ object AiResponseParser {
         confirmedNames: List<String>?,
         weightPolicy: NutritionWeightPolicy
     ): List<EstimatedIngredient> {
+        val partial = parseNutritionAllowPartial(raw, confirmedNames, weightPolicy)
+        if (partial.missing.isNotEmpty()) fail(AiPipelineError.WrongItemCount)
+        return partial.items
+    }
+
+    /** A nutrition answer with some confirmed positions absent; the caller can fetch the rest. */
+    class PartialNutrition(val items: List<EstimatedIngredient>, val missing: List<String>)
+
+    /**
+     * Same validation as [parseNutrition] except a missing confirmed position is reported in
+     * [PartialNutrition.missing] instead of failing: the repository asks the model once more
+     * for just those products, which is far more reliable than failing the whole step.
+     */
+    fun parseNutritionAllowPartial(
+        raw: String,
+        confirmedNames: List<String>?,
+        weightPolicy: NutritionWeightPolicy
+    ): PartialNutrition {
         val payload = extractPayload(raw)
         // The contract is {"ingredients":[...]}; a bare array arrives from providers without
         // JSON mode, and single-array wrappers ({"items":[...]}) from models that improvise.
@@ -93,7 +111,7 @@ object AiResponseParser {
 
         // Items are validated positionally and kept in confirmed order. Names are matched
         // case-insensitively so "Курица" vs "курица" is not a rename; unknown extras are
-        // dropped; a missing confirmed item fails; two answers for one item is a duplicate.
+        // dropped; two answers for one item is a duplicate.
         val slotByName = expected?.mapIndexed { index, name -> name.normalized() to index }?.toMap()
         val bySlot = mutableMapOf<Int, JsonObject>()
         val parsed = mutableListOf<EstimatedIngredient>()
@@ -118,14 +136,18 @@ object AiResponseParser {
                 )
             )
         }
-        if (expected != null && bySlot.size != expected.size) fail(AiPipelineError.WrongItemCount)
-        val result = parsed.sortedBy { item -> expected?.indexOfFirst { it.normalized() == item.name.normalized() } ?: 0 }
-        result.forEach { item ->
+        parsed.forEach { item ->
             if (weightPolicy == NutritionWeightPolicy.USER_INPUT_ONLY && (item.rawGrams != 0f || item.cookedGrams != 0f)) {
                 fail(AiPipelineError.InvalidRange)
             }
         }
-        return result
+        val ordered = parsed.sortedBy { item ->
+            expected?.indexOfFirst { it.normalized() == item.name.normalized() } ?: 0
+        }
+        val missing = expected
+            ?.filter { confirmed -> ordered.none { it.name.normalized() == confirmed.normalized() } }
+            .orEmpty()
+        return PartialNutrition(ordered, missing)
     }
 
     /** First array-valued property of a wrapper object, whatever the model named it. */

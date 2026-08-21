@@ -89,20 +89,52 @@ class OpenAiClient @Inject constructor() {
         // seamlessly: the provider names the exact pause ("Please try again in 27.4s",
         // Retry-After) and the request repeats on its own; the user only sees a slightly
         // longer "analysing" state instead of an error.
+        var budget = maxTokens
         var attempt = 0
-        var result = callOnce(config, messages, maxTokens, preferJsonMode)
+        var result = callOnce(config, messages, budget, preferJsonMode)
         while (attempt < MAX_TRANSIENT_ATTEMPTS && result.isTransientRetryable()) {
-            val advised = (result as Result.HttpError).retryAfterSeconds
+            val error = result as Result.HttpError
+            val advised = error.retryAfterSeconds
             val backoff = TRANSIENT_BACKOFF_SECONDS.elementAtOrNull(attempt) ?: TRANSIENT_BACKOFF_SECONDS.last()
-            delay((advised ?: backoff).coerceIn(1, MAX_TRANSIENT_WAIT_SECONDS) * 1000)
+            var waitSeconds = (advised ?: backoff).coerceIn(1, MAX_TRANSIENT_WAIT_SECONDS)
+            // Providers with a tokens-per-minute quota (Groq free tier) reject the whole
+            // reservation (prompt + max_tokens), so a generous budget always 429s there.
+            // The "Limit 8000, Used 4699, Requested 5353" line lets us shrink max_tokens
+            // to what actually fits and retry immediately instead of waiting the window out.
+            tpmBudget(error.body, effectiveBudget(config, budget))?.let { fitted ->
+                budget = fitted
+                if (fitted >= MIN_FITTED_TOKENS) waitSeconds = 1
+            }
+            delay(waitSeconds * 1000)
             attempt++
-            result = callOnce(config, messages, maxTokens, preferJsonMode)
+            result = callOnce(config, messages, budget, preferJsonMode)
         }
         return result
     }
 
+    /**
+     * A max_tokens value that fits the provider's current TPM window, parsed from a Groq-style
+     * rate-limit body; null when the body carries no quota numbers. When the remaining window
+     * is too small even for the floor, the suggestion is what fits a fully reset window.
+     */
+    private fun tpmBudget(body: String, lastReserved: Int): Int? {
+        val match = TPM_LINE.find(body) ?: return null
+        val limit = match.groupValues[1].toLongOrNull() ?: return null
+        // Groq's 413 variant ("Request too large ... Limit 8000, Requested 16830") has no Used.
+        val used = match.groupValues[2].takeIf { it.isNotBlank() }?.toLongOrNull() ?: 0L
+        val requested = match.groupValues[3].takeIf { it.isNotBlank() }?.toLongOrNull()
+            ?: match.groupValues[2].toLongOrNull() ?: return null
+        val promptTokens = (requested - lastReserved).coerceIn(0L, limit)
+        val freeNow = limit - used - promptTokens
+        val freshWindow = limit - promptTokens - 256
+        return when {
+            freeNow >= MIN_FITTED_TOKENS -> freeNow.coerceAtMost(MAX_TOKENS_CAP.toLong()).toInt()
+            else -> freshWindow.coerceIn(MIN_FITTED_TOKENS.toLong(), MAX_TOKENS_CAP.toLong()).toInt()
+        }
+    }
+
     private fun Result.isTransientRetryable(): Boolean =
-        this is Result.HttpError && (code == 429 || code == 408 || code == 503 || code == 504)
+        this is Result.HttpError && (code == 429 || code == 413 || code == 408 || code == 503 || code == 504)
 
     /** One full attempt including the compatibility and truncation self-healing. */
     private suspend fun callOnce(
@@ -119,6 +151,13 @@ class OpenAiClient @Inject constructor() {
                 preferJsonMode, allowCompatFallback = false)
         }
         if (first is Result.HttpError && first.code == 400) {
+            // "max_tokens must be <= 16384" means a smaller number in the same field,
+            // not the o-series field switch handled by the parameter hints below.
+            ApiErrorMessages.maxTokensCeiling(first.body)?.let { ceiling ->
+                maxTokensCeilings.merge(config.baseUrl, ceiling, ::minOf)
+                return singleCall(config, messages, effectiveBudget(config, maxTokens),
+                    preferJsonMode, allowCompatFallback = false)
+            }
             val fallback = compatFallbackFor(config, first.body) ?: return first
             applyFallback(config, fallback)
             return singleCall(config, messages, maxTokens, preferJsonMode, allowCompatFallback = false)
@@ -138,6 +177,7 @@ class OpenAiClient @Inject constructor() {
         if (CompatHints.MAX_TOKENS in hints && !maxTokensRejected.contains(config.baseUrl)) changed = true
         if (CompatHints.RESPONSE_FORMAT in hints && !jsonModeRejected.contains(config.baseUrl)) changed = true
         if (CompatHints.TEMPERATURE in hints && !temperatureRejected.contains(config.baseUrl)) changed = true
+        if (CompatHints.REASONING_FORMAT in hints && !reasoningFormatRejected.contains(config.baseUrl)) changed = true
         return if (changed) hints else null
     }
 
@@ -145,11 +185,14 @@ class OpenAiClient @Inject constructor() {
         if (CompatHints.MAX_TOKENS in hints) maxTokensRejected.add(config.baseUrl)
         if (CompatHints.RESPONSE_FORMAT in hints) jsonModeRejected.add(config.baseUrl)
         if (CompatHints.TEMPERATURE in hints) temperatureRejected.add(config.baseUrl)
+        if (CompatHints.REASONING_FORMAT in hints) reasoningFormatRejected.add(config.baseUrl)
     }
 
     private val maxTokensRejected = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val jsonModeRejected = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val temperatureRejected = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val reasoningFormatRejected = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val maxTokensCeilings = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     private suspend fun singleCall(
         config: ApiConfig,
@@ -192,11 +235,19 @@ class OpenAiClient @Inject constructor() {
     ): ChatCompletionRequest = ChatCompletionRequest(
         model = config.modelId,
         messages = messages,
-        maxTokens = if (maxTokensRejected.contains(config.baseUrl)) null else maxTokens,
+        // Some providers cap max_tokens far below our generous budgets (Groq qwen3.6: 16384).
+        maxTokens = if (maxTokensRejected.contains(config.baseUrl)) null else effectiveBudget(config, maxTokens),
         maxCompletionTokens = if (maxTokensRejected.contains(config.baseUrl)) maxTokens else null,
         temperature = if (temperatureRejected.contains(config.baseUrl)) null else 0.2f,
-        responseFormat = if (preferJsonMode && supportsJsonMode(config)) JsonResponseFormat() else null
+        responseFormat = if (preferJsonMode && supportsJsonMode(config)) JsonResponseFormat() else null,
+        reasoningFormat = if (config.baseUrl.lowercase().contains("groq.com") &&
+            !reasoningFormatRejected.contains(config.baseUrl)) "hidden" else null
     )
+
+    private fun effectiveBudget(config: ApiConfig, requested: Int): Int {
+        val ceiling = maxTokensCeilings[config.baseUrl] ?: return requested
+        return requested.coerceAtMost(ceiling)
+    }
 
     /**
      * JSON mode is sent to any provider unless this exact provider already rejected it once;
@@ -209,6 +260,7 @@ class OpenAiClient @Inject constructor() {
         const val MAX_TOKENS = "max_tokens"
         const val RESPONSE_FORMAT = "response_format"
         const val TEMPERATURE = "temperature"
+        const val REASONING_FORMAT = "reasoning_format"
     }
 
     /** Provider-advised wait: the Retry-After header (seconds) or Groq's "try again in 27.4s". */
@@ -218,10 +270,12 @@ class OpenAiClient @Inject constructor() {
     }
 
     private companion object {
-        const val MAX_TOKENS_CAP = 8192
+        const val MAX_TOKENS_CAP = 32768
+        const val MIN_FITTED_TOKENS = 512
         const val MAX_TRANSIENT_ATTEMPTS = 3
-        const val MAX_TRANSIENT_WAIT_SECONDS = 60L
+        const val MAX_TRANSIENT_WAIT_SECONDS = 45L
         val TRANSIENT_BACKOFF_SECONDS = longArrayOf(8, 16, 30)
         val RETRY_AFTER_IN_BODY = Regex("try again in ([0-9]+(?:\\.[0-9]+)?)\\s*s", RegexOption.IGNORE_CASE)
+        val TPM_LINE = Regex("Limit ([0-9]+), (?:Used ([0-9]+), )?Requested ([0-9]+)")
     }
 }
